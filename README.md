@@ -35,8 +35,6 @@ ChatGPT & Claude
 * [API и интеграции](#api-и-интеграции)
 * [Схема БД](#схема-бд)
 * [Roadmap](#roadmap)
-* (out of scope v1)(#out-of-scope-v1)
-* [Лицензия](#лицензия)
 
 ---
 
