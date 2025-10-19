@@ -30,19 +30,11 @@ def init_session_state():
 
     Creates variables for storing:
     - engine: RAG engine instance
-    - messages: Message history for chat display
-    - sources_history: Source history for each answer
 
     Called once on page load.
     """
     if "engine" not in st.session_state:
         st.session_state.engine = RAGEngine()
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    if "sources_history" not in st.session_state:
-        st.session_state.sources_history = []
 
 
 def display_message(role: str, content: str):
@@ -90,16 +82,6 @@ def display_sources(sources: list):
                 #     st.markdown(f"[🔗 Go to moment]({source['url']})")
 
 
-def clear_chat():
-    """
-    Clear chat history and reset RAG engine.
-
-    Used by "Clear chat" button in sidebar.
-    Removes all messages and resets dialog context.
-    """
-    st.session_state.messages = []
-    st.session_state.sources_history = []
-    st.session_state.engine.clear_history()
 
 
 def main():
@@ -107,12 +89,12 @@ def main():
     Main Streamlit application function.
 
     Configures page, creates interface and processes user queries.
-    Implements chat interface with history support and source display.
+    Implements simple query interface with source display.
 
     Main elements:
     - Title and description
     - Sidebar with settings
-    - Chat for entering questions
+    - Input field for questions
     - Answer display with sources
     """
     # Page configuration
@@ -141,10 +123,6 @@ def main():
         st.markdown("### 📊 System Status")
         st.info("✅ System ready")
 
-        # Statistics
-        st.markdown("### 📈 Statistics")
-        st.metric("Messages in history", len(st.session_state.messages))
-
         # RAG settings
         st.markdown("### 🔧 RAG Parameters")
 
@@ -169,13 +147,6 @@ def main():
         st.session_state.engine.top_k = top_k
         st.session_state.engine.similarity_threshold = similarity_threshold
 
-        # Control buttons
-        st.markdown("### 🎛️ Control")
-
-        if st.button("🗑️ Clear chat", use_container_width=True):
-            clear_chat()
-            st.rerun()
-
         # Project information
         st.markdown("---")
         st.markdown("### ℹ️ About Project")
@@ -193,18 +164,9 @@ def main():
             """
         )
 
-    # Display message history
-    for idx, message in enumerate(st.session_state.messages):
-        display_message(message["role"], message["content"])
-
-        # Display sources for assistant answers
-        if message["role"] == "assistant" and idx < len(st.session_state.sources_history):
-            display_sources(st.session_state.sources_history[idx // 2])
-
     # Question input field
     if prompt := st.chat_input("Ask question about DS, ML or AI..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Display user question
         display_message("user", prompt)
 
         # Generate answer
@@ -217,21 +179,12 @@ def main():
                     # Display answer
                     st.markdown(result["answer"])
 
-                    # Save to history
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": result["answer"]}
-                    )
-                    st.session_state.sources_history.append(result["sources"])
-
                     # Display sources
                     display_sources(result["sources"])
 
                 except Exception as e:
                     error_msg = f"❌ Error processing query: {str(e)}"
                     st.error(error_msg)
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": error_msg}
-                    )
 
 
 if __name__ == "__main__":

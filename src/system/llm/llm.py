@@ -5,19 +5,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MODEL = os.getenv("MODEL", "gpt-5")
-OPENAI_API_KEY = os.environ.get('API_KEY_1')
+MODEL = os.getenv("MODEL")
+OR_API_KEY = os.environ.get('API_KEY_1')
 
 class OpenRouterClient:
     def __init__(
         self,
-        model: str = "anthropic/claude-3.5-sonnet",
+        model: str = MODEL,
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1"
     ):
         self.model = model
         self.client = OpenAI(
-            api_key=api_key or os.getenv("OPENROUTER_API_KEY"),
+            api_key=OR_API_KEY,
             base_url=base_url
         )
     
@@ -29,6 +29,6 @@ class OpenRouterClient:
         )
         return response.choices[0].message.content
 
-# Использование
-llm = OpenRouterClient(model="anthropic/claude-3.5-sonnet")
-response = llm.chat([{"role": "user", "content": "Hello!"}])
+# # Использование
+# llm = OpenRouterClient()
+# response = llm.chat([{"role": "user", "content": "Hello!"}])

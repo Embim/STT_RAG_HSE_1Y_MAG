@@ -43,23 +43,23 @@ class RAGPrompts:
             system_msg = RAGPrompts.get_system_prompt()
             messages = [{"role": "system", "content": system_msg}]
         """
-        return """You are DS Navigator, an intelligent assistant for navigating educational content knowledge base on Data Science, Machine Learning and AI.
+        return """Ты DS Navigator - интеллектуальный ассистент для навигации по базе знаний образовательного контента по Data Science, Machine Learning и AI.
 
-Your tasks:
-1. Answer user questions based on provided context from lecture, talk and podcast transcriptions
-2. ALWAYS cite sources with specific timestamps
-3. Give accurate, informative answers with citations
-4. If there's no relevant info in context - honestly say so
+Твои задачи:
+1. Отвечать на вопросы пользователя на основе предоставленного контекста из транскрипций лекций, докладов и подкастов
+2. ВСЕГДА указывать источники с конкретными таймкодами
+3. Давать точные, информативные ответы с цитированием источников
+4. Если в контексте нет релевантной информации - честно об этом говорить
 
-Source link format:
-- Indicate source name and timestamp in format [Source: name | Time: MM:SS]
-- If multiple sources confirm the info - list all
+Формат ссылок на источники:
+- Указывай название источника и таймкод в формате [Источник: название | Время: MM:SS]
+- Если несколько источников подтверждают информацию - перечисли все
 
-Answer style:
-- Structured, split into paragraphs
-- Technically accurate but understandable
-- With examples from context if available
-- In Russian language (content is mostly in Russian)"""
+Стиль ответа:
+- Структурированный, разбитый на абзацы
+- Технически точный, но понятный
+- С примерами из контекста, если доступны
+- На русском языке"""
 
     @staticmethod
     def format_user_query(query: str, context: List[Dict[str, Any]]) -> str:
@@ -96,11 +96,11 @@ Answer style:
             )
         """
         if not context:
-            return f"""User question: {query}
+            return f"""Вопрос пользователя: {query}
 
-Context: (no context found)
+Контекст: (контекст не найден)
 
-Tell the user that no relevant information was found in the knowledge base for this query."""
+Сообщи пользователю, что по данному запросу не найдена релевантная информация в базе знаний."""
 
         # Format context
         formatted_context = []
@@ -113,23 +113,23 @@ Tell the user that no relevant information was found in the knowledge base for t
             # Convert timestamp to readable format
             time_str = RAGPrompts._format_timestamp(timestamp)
 
-            chunk_text = f"""Chunk {idx} (relevance: {score:.2f}):
-Source: {source}
-Timestamp: {time_str}
-Text: {text}
+            chunk_text = f"""Фрагмент {idx} (релевантность: {score:.2f}):
+Источник: {source}
+Таймкод: {time_str}
+Текст: {text}
 ---"""
             formatted_context.append(chunk_text)
 
         context_block = "\n\n".join(formatted_context)
 
-        return f"""User question: {query}
+        return f"""Вопрос пользователя: {query}
 
-Context from knowledge base:
+Контекст из базы знаний:
 
 {context_block}
 
-Based on the provided context, give a detailed answer to the user's question.
-ALWAYS cite sources and timestamps where the information came from."""
+На основе предоставленного контекста дай развернутый ответ на вопрос пользователя.
+ОБЯЗАТЕЛЬНО указывай источники и таймкоды, откуда взята информация."""
 
     @staticmethod
     def _format_timestamp(timestamp: Any) -> str:
@@ -165,48 +165,3 @@ ALWAYS cite sources and timestamps where the information came from."""
         except (ValueError, TypeError):
             return "00:00"
 
-    @staticmethod
-    def format_standalone_query(query: str, chat_history: List[Dict[str, str]]) -> str:
-        """
-        Converts user query to standalone query considering chat history.
-
-        Used to improve vector search quality when user asks
-        follow-up questions ("what about X?", "tell me more").
-
-        Args:
-            query (str): Current user question
-            chat_history (List[Dict[str, str]]): Conversation history.
-                Format: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
-
-        Returns:
-            str: Standalone query for vector search
-
-        Example:
-            history = [
-                {"role": "user", "content": "What is BERT?"},
-                {"role": "assistant", "content": "BERT is a transformer model..."}
-            ]
-            query = "What are its drawbacks?"
-            standalone = format_standalone_query(query, history)
-            # Result: "What are the drawbacks of BERT model?"
-        """
-        if not chat_history:
-            return query
-
-        # Take last N messages for context
-        recent_history = chat_history[-4:]  # Last 2 question-answer pairs
-
-        history_text = "\n".join([
-            f"{msg['role'].capitalize()}: {msg['content']}"
-            for msg in recent_history
-        ])
-
-        prompt = f"""Dialog history:
-{history_text}
-
-New user question: {query}
-
-Convert this question into a complete standalone query that can be used for search without history context.
-Return ONLY the reformulated question, without additional explanations."""
-
-        return prompt
