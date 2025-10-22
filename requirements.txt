@@ -1,0 +1,17 @@
+# RAG Pipeline Requirements
+
+# Embeddings
+sentence-transformers>=2.7.0
+transformers>=4.51.0
+
+# Vector Database
+weaviate-client>=4.0.0
+
+# Utilities
+tqdm>=4.65.0
+numpy>=1.24.0
+scikit-learn>=1.3.0  # Для примеров (cosine_similarity)
+
+# Optional: для улучшения производительности
+# torch>=2.0.0  # Если нужна поддержка GPU
+# flash-attn>=2.0.0  # Для ускорения attention механизма
