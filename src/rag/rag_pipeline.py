@@ -9,11 +9,11 @@ RAG Pipeline для обработки транскрибированных ле
 """
 
 import json
-import os
 from pathlib import Path
 from typing import List, Dict, Tuple
 import weaviate
-from weaviate.classes.init import Auth
+import spacy
+from weaviate.classes.config import Property, DataType, Configure, VectorDistances
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
@@ -59,6 +59,13 @@ class TextChunker:
         """
         self.chunk_size = chunk_size
         self.overlap = overlap
+        self.nlp_cleaner = spacy.load("ru_core_news_sm")
+
+    def clean_text(self, text: str):
+        doc = self.nlp_cleaner(text)
+        cleaned_tokens = [token.text for token in doc if token.pos_ not in ["INTJ", "PART", "SYM"]]
+        cleaned_text = " ".join(cleaned_tokens)
+        return cleaned_text
 
     def chunk_text(self, text: str, metadata: Dict) -> List[Dict]:
         """
@@ -71,7 +78,7 @@ class TextChunker:
         Returns:
             Список словарей с чанками и метаданными
         """
-        words = text.split()
+        words = self.clean_text(text).split()
         chunks = []
 
         start = 0
@@ -197,17 +204,28 @@ class WeaviateIndexer:
 
             # Создаем новую коллекцию
             print(f"Создание коллекции {self.collection_name}...")
+            
             self.client.collections.create(
                 name=self.collection_name,
                 properties=[
-                    {"name": "text", "dataType": ["text"]},
-                    {"name": "lecture_id", "dataType": ["text"]},
-                    {"name": "lecture_hash", "dataType": ["text"]},
-                    {"name": "filename", "dataType": ["text"]},
-                    {"name": "chunk_id", "dataType": ["int"]},
-                    {"name": "word_start", "dataType": ["int"]},
-                    {"name": "word_end", "dataType": ["int"]},
-                    {"name": "total_words", "dataType": ["int"]},
+                    Property(name="text", data_type=DataType.TEXT),
+                    Property(name="lecture_id", data_type=DataType.TEXT),
+                    Property(name="lecture_hash", data_type=DataType.TEXT),
+                    Property(name="filename", data_type=DataType.TEXT),
+                    Property(name="chunk_id", data_type=DataType.INT),
+                    Property(name="word_start", data_type=DataType.INT),
+                    Property(name="word_end", data_type=DataType.INT),
+                    Property(name="total_words", data_type=DataType.INT),
+                ],
+                vector_config=[
+                    Configure.Vectors.self_provided(
+                        name="default",
+                        vector_index_config=Configure.VectorIndex.hnsw(
+                            distance_metric=VectorDistances.COSINE,
+                            vector_cache_max_objects=100000,
+                            ef_construction=200
+                        )
+                    )
                 ]
             )
             print("Схема создана успешно!")
@@ -262,6 +280,7 @@ class WeaviateIndexer:
 
 class RAGRetriever:
     """Класс для поиска релевантных чанков"""
+    HYBRID_SEARCH_ALPHA = 0.7
 
     def __init__(self, weaviate_indexer: WeaviateIndexer, embedding_model: EmbeddingModel):
         """
@@ -297,12 +316,15 @@ class RAGRetriever:
 
         # Поиск в Weaviate
         collection = self.indexer.client.collections.get(self.indexer.collection_name)
-
-        results = collection.query.near_vector(
-            near_vector=query_embedding.tolist(),
+        
+        # Берем гибридные варианты
+        results = collection.query.hybrid(
+            query=query,
+            vector=query_embedding.tolist(),
+            alpha=self.HYBRID_SEARCH_ALPHA,
             limit=top_k,
             return_properties=["text", "lecture_id", "filename", "chunk_id", "lecture_hash"],
-            return_metadata=["distance"]
+            return_metadata=["score"]
         )
 
         # Форматируем результаты
@@ -314,8 +336,7 @@ class RAGRetriever:
                 "filename": item.properties.get("filename"),
                 "chunk_id": item.properties.get("chunk_id"),
                 "lecture_hash": item.properties.get("lecture_hash"),
-                "distance": item.metadata.distance,
-                "similarity": 1 - item.metadata.distance  # Конвертируем distance в similarity
+                "score": item.metadata.score
             })
 
         return retrieved_chunks
@@ -327,7 +348,7 @@ class RAGRetriever:
         print("="*80 + "\n")
 
         for i, result in enumerate(results, 1):
-            print(f"#{i} | Сходство: {result['similarity']:.4f} | {result['filename']} (chunk {result['chunk_id']})")
+            print(f"#{i} | Скор: {result['score']:.4f} | {result['filename']} (chunk {result['chunk_id']})")
             print("-" * 80)
             print(result['text'][:300] + "..." if len(result['text']) > 300 else result['text'])
             print("\n")
@@ -337,10 +358,10 @@ def main():
     """Основная функция пайплайна"""
 
     # Настройки
-    TRANSCRIPTS_FOLDER = r"c:\Users\petrc\OneDrive\Мага\Годовой проект\transcripted_text"
+    TRANSCRIPTS_FOLDER = r"/tmp/json_lectures"
     CHUNK_SIZE = 500  # слов
     OVERLAP = 50  # слов
-    WEAVIATE_URL = "http://localhost:8080"
+    WEAVIATE_URL = "http://80.90.190.85:8080"
 
     print("="*80)
     print("RAG PIPELINE ДЛЯ ЛЕКЦИЙ")
@@ -358,7 +379,7 @@ def main():
 
     # 3. Векторизация
     print("\n[Шаг 3/6] Векторизация чанков...")
-    embedding_model = EmbeddingModel()
+    embedding_model = EmbeddingModel(device='cpu')
     chunks_with_embeddings = embedding_model.encode_chunks(chunks)
 
     # 4. Подключение к Weaviate и создание схемы

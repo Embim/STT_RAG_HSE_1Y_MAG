@@ -17,7 +17,7 @@ def main():
     # Инициализация
     try:
         embedding_model = EmbeddingModel()
-        indexer = WeaviateIndexer(url="http://localhost:8080")
+        indexer = WeaviateIndexer(url="http://80.90.190.85:8080")
         indexer.connect()
         retriever = RAGRetriever(indexer, embedding_model)
         print("✓ Система готова к работе!\n")
