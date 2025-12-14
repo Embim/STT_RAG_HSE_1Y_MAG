@@ -19,43 +19,128 @@ ChatGPT & Claude
 >
 > **Ценность:** не «ещё один сервис транскрибации», а **навигатор знаний по DS‑домену** с доказательными ответами и маршрутизацией к первоисточнику.
 
-## Quick Start (MVP)
+## Текущий статус (что уже работает)
 
-### Setup
+✅ **Рабочее:**
+- RAG pipeline с переформулировкой вопросов
+- Семантический поиск по векторной БД
+- Генерация ответов через LLM (OpenRouter)
+- Эмбеддинг модель FRIDA (локально через Infinity)
+- Асинхронная архитектура
+
+⚠️ **Временные костыли:**
+- ChromaDB вместо нормальной векторки
+- Только семантический поиск (гибридный в TODO)
+- Простая структура данных (text + hash)
+- Логирование минимальное
+
+🚧 **В разработке:**
+- YouTube downloader
+- Whisper транскрибация
+- Таймкоды и привязка к видео
+- Нормальная БД (Weaviate/Qdrant)
+
+---
+
+## Быстрый старт
+
+### 1. Установка зависимостей
 ```bash
-# Install dependencies
-pip install streamlit openai python-dotenv
+# Клонируем репо
+git clone 
+cd STT_RAG_HSE_1Y_MAG
 
-# Configure API key
-echo "OPENROUTER_API_KEY=your_key" > .env
-
-# Launch Streamlit interface
-streamlit run src/app/ui.py
+# Ставим пакеты
+pip install -r requirements.txt
 ```
 
-### Project Structure
+### 2. Настройка окружения
+
+Создай `.env` файл в корне проекта:
+```env
+# LLM (OpenRouter)
+LLM_API_KEY_3=your_openrouter_key
+LLM_MODEL=openai/gpt-4o-mini
+LLM_BASE_URL=https://openrouter.ai/api/v1
+
+# Прочие настройки
+LLM_TEMPERATURE=0.7
+LLM_MAX_TOKENS=2000
+```
+
+### 3. Поднимаем Infinity (эмбеддинг модель)
+```bash
+docker-compose up -d infinity
+```
+
+Проверяем, что работает:
+```bash
+curl http://localhost:7997/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"input":"тест"}'
+```
+
+### 4. Загружаем данные в векторную БД
+```bash
+python -m downloader.ingest
+```
+
+Это запустит пример загрузки. Для своих данных отредактируй `src/downloader/ingest.py`:
+```python
+json_data = [
+    {
+        "hash": "unique_id_1",
+        "text": "Текст вашей лекции..."
+    }
+]
+```
+
+### 5. Тестируем RAG
+```bash
+python -m test
+```
+
+Или напрямую в коде:
+```python
+from system.rag.pipeline import run
+import asyncio
+
+async def main():
+    answer = await run(question="Что такое осень?")
+    print(answer)
+
+asyncio.run(main())
+```
+
+---
+
+## Архитектура проекта
 ```
 src/
 ├── app/
-│   ├── ui.py          # Streamlit web interface
-│   └── README.md      # Interface documentation
+│   └── ui.py              # Streamlit интерфейс (WIP)
+├── downloader/
+│   └── ingest.py          # Загрузка данных в векторную БД
 ├── system/
-│   ├── engine.py      # RAG pipeline
-│   └── llm/
-│       ├── llm.py     # LLM client (OpenRouter)
-│       └── prompts.py # Prompt templates
-└── downloader/        # Media ingestion (TBD)
+│   ├── llm/
+│   │   └── llm_services.py   # Клиент OpenRouter
+│   └── rag/
+│       ├── pipeline.py       # Главный RAG pipeline
+│       ├── embedder.py       # Локальный эмбеддер (Infinity)
+│       ├── retriver.py       # Поиск по векторной БД
+│       ├── answer.py         # Генерация ответов
+│       ├── question_rewriter.py  # Переформулировка вопросов
+│       └── vectore_store.py  # Менеджер векторной БД
+├── prompts.py             # Системные промпты
+├── settings.py            # Конфиг из .env
+└── test.py               # Быстрый тест
+
+data/
+├── transcripts/          # Транскрибированные тексты
+├── vectore_store/        # ChromaDB данные
+└── infinity_data/        # Кэш эмбеддинг модели
+
+docker-compose.yaml       # Infinity контейнер
+requirements.txt          # Python зависимости
 ```
 
-### Components
-
-- **RAG Engine** (`src/system/engine.py`) - Main query processing pipeline
-- **LLM Integration** (`src/system/llm/`) - OpenRouter client + prompt management
-- **Web Interface** (`src/app/ui.py`) - Streamlit chat UI with source citations
-
-### Current Status: MVP
-Uses mock data for demonstration. Next steps:
-- Vector DB integration (ChromaDB/FAISS)
-- Real transcription data
-- YouTube downloader
-- Timestamp-linked video navigation
