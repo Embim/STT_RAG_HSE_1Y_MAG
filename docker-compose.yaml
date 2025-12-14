@@ -1,0 +1,30 @@
+x-shared-logs: &shared-logs
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "100k"
+
+services:
+  infinity:
+    image: michaelf34/infinity:0.0.76
+    restart: unless-stopped
+    network_mode: host  # Добавьте эту строку
+    command: >
+      v2
+      --model-id ai-forever/FRIDA
+      --engine torch
+      --port "7997"
+    environment:
+      - HF_HOME=/app/.cache
+      - HF_HUB_ENABLE_HF_TRANSFER=0
+      - DO_NOT_TRACK=1
+      - HF_HUB_DISABLE_TELEMETRY=1
+      - INFINITY_ANONYMOUS_USAGE_STATS=0
+      - NVIDIA_VISIBLE_DEVICES=0
+    volumes:
+      - ./infinity_data:/app/.cache
+    # ports убираем, т.к. network_mode: host их игнорирует
+    runtime: nvidia
+    <<: *shared-logs
+
+  
