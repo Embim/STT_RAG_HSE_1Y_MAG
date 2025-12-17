@@ -17,24 +17,26 @@ Example usage:
 import streamlit as st
 import sys
 import os
+import asyncio
+import requests
 
 # Add project root to PYTHONPATH for module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.system.engine import RAGEngine
+# from src.system.engine import RAGEngine
+from src.system.rag.pipeline import run
 
+# def init_session_state():
+#     """
+#     Initialize Streamlit session state.
 
-def init_session_state():
-    """
-    Initialize Streamlit session state.
+#     Creates variables for storing:
+#     - engine: RAG engine instance
 
-    Creates variables for storing:
-    - engine: RAG engine instance
-
-    Called once on page load.
-    """
-    if "engine" not in st.session_state:
-        st.session_state.engine = RAGEngine()
+#     Called once on page load.
+#     """
+#     if "engine" not in st.session_state:
+#         st.session_state.engine = RAGEngine()
 
 
 def display_message(role: str, content: str):
@@ -106,7 +108,7 @@ def main():
     )
 
     # Initialize state
-    init_session_state()
+    # init_session_state()
 
     # Header
     st.title("🎓 DS Navigator - Audio2RAG")
@@ -144,8 +146,8 @@ def main():
         )
 
         # Update engine parameters
-        st.session_state.engine.top_k = top_k
-        st.session_state.engine.similarity_threshold = similarity_threshold
+        # st.session_state.engine.top_k = top_k
+        # st.session_state.engine.similarity_threshold = similarity_threshold
 
         # Project information
         st.markdown("---")
@@ -174,7 +176,18 @@ def main():
             with st.spinner("🔍 Searching knowledge base..."):
                 try:
                     # Query RAG engine
-                    result = st.session_state.engine.query(prompt)
+                    # result = st.session_state.engine.query(prompt)
+                    # result = run(question=prompt, top_k=top_k, similarity_threshold=similarity_threshold)
+                    resp = requests.post(
+                        "http://localhost:8000/forward",
+                        json={
+                            "question": prompt,
+                            "top_k": top_k,
+                            "similarity_threshold": similarity_threshold,
+                        },
+                        timeout=60,
+                    )
+                    result = resp.json()
 
                     # Display answer
                     st.markdown(result["answer"])

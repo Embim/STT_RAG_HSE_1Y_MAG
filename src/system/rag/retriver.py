@@ -26,10 +26,11 @@ def _pack_results(
 async def retrieve(
     vector_store_manager: VectorStoreManager, 
     query: str,
-    k: int
+    k: int,
+    similarity_threshold: float
 ) -> Dict[str, Any]:
     
-    pairs = await vector_store_manager.search(query, k=k)
+    pairs = await vector_store_manager.search(query, k=k, similarity_threshold=similarity_threshold)
 
     result = _pack_results(_prepare_docs(pairs))
 
