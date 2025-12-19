@@ -17,24 +17,12 @@ Example usage:
 import streamlit as st
 import sys
 import os
+import asyncio
 
 # Add project root to PYTHONPATH for module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.system.engine import RAGEngine
-
-
-def init_session_state():
-    """
-    Initialize Streamlit session state.
-
-    Creates variables for storing:
-    - engine: RAG engine instance
-
-    Called once on page load.
-    """
-    if "engine" not in st.session_state:
-        st.session_state.engine = RAGEngine()
+from src.system.rag.pipieline import run
 
 
 def display_message(role: str, content: str):
@@ -77,11 +65,6 @@ def display_sources(sources: list):
                 st.markdown(
                     f"**{idx}.** {source['name']} - `{source['timestamp']}`"
                 )
-                # TODO: Add clickable links to video with timestamps
-                # if "url" in source:
-                #     st.markdown(f"[🔗 Go to moment]({source['url']})")
-
-
 
 
 def main():
@@ -105,9 +88,6 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    # Initialize state
-    init_session_state()
-
     # Header
     st.title("🎓 DS Navigator - Audio2RAG")
     st.markdown(
@@ -122,30 +102,6 @@ def main():
         # System information
         st.markdown("### 📊 System Status")
         st.info("✅ System ready")
-
-        # RAG settings
-        st.markdown("### 🔧 RAG Parameters")
-
-        top_k = st.slider(
-            "Number of sources",
-            min_value=1,
-            max_value=10,
-            value=5,
-            help="Number of chunks to retrieve from knowledge base"
-        )
-
-        similarity_threshold = st.slider(
-            "Relevance threshold",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.7,
-            step=0.05,
-            help="Minimum chunk relevance (0-1)"
-        )
-
-        # Update engine parameters
-        st.session_state.engine.top_k = top_k
-        st.session_state.engine.similarity_threshold = similarity_threshold
 
         # Project information
         st.markdown("---")
@@ -174,13 +130,14 @@ def main():
             with st.spinner("🔍 Searching knowledge base..."):
                 try:
                     # Query RAG engine
-                    result = st.session_state.engine.query(prompt)
+                    result = asyncio.run(run(prompt))
 
                     # Display answer
                     st.markdown(result["answer"])
 
                     # Display sources
-                    display_sources(result["sources"])
+                    if "sources" in result:
+                        display_sources(result["sources"])
 
                 except Exception as e:
                     error_msg = f"❌ Error processing query: {str(e)}"

@@ -15,16 +15,15 @@ async def run(
 ):
     try:
         #TODO logs, history
-        rewritten_question = await rewrite(question)
-        print('rewritten_question', rewritten_question)
+        # rewritten_question = await rewrite(question)
+        print('rewritten_question', question)
         context = await retrieve(
             vector_store_manager,
-            rewritten_question,
+            question,
             k = settings.K
         )
-        print('context', context)
         answer = await generate_answer(
-            question_rewritten = rewritten_question,
+            question_rewritten = question,
             final_rag_content=context
         )
 
