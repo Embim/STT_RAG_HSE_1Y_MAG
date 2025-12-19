@@ -67,8 +67,8 @@ class VectorStoreManager:
         return all_ids
 
 
-    async def search(self, query: str, k: int) -> list[tuple[Document, float]]:
+    async def search(self, query: str, k: int, similarity_threshold:float) -> list[tuple[Document, float]]:
         """Search relevance top-K docs in vector DB."""
         return await self.vector_store.asimilarity_search_with_relevance_scores(
-            query, k=k
+            query=query, k=k, score_threshold=similarity_threshold
         )

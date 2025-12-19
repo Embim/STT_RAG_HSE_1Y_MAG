@@ -2,7 +2,7 @@ import asyncio
 
 from settings import settings
 from system.rag.vectore_store import VectorStoreManager
-from system.rag.pipieline import run
+from system.rag.pipeline import run
 
 query = 'что такое MCP'
 
