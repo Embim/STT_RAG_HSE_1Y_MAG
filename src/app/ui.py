@@ -18,11 +18,25 @@ import streamlit as st
 import sys
 import os
 import asyncio
+import requests
 
 # Add project root to PYTHONPATH for module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.system.rag.pipieline import run
+# from src.system.engine import RAGEngine
+from src.system.rag.pipeline import run
+
+# def init_session_state():
+#     """
+#     Initialize Streamlit session state.
+
+#     Creates variables for storing:
+#     - engine: RAG engine instance
+
+#     Called once on page load.
+#     """
+#     if "engine" not in st.session_state:
+#         st.session_state.engine = RAGEngine()
 
 
 def display_message(role: str, content: str):
@@ -88,6 +102,9 @@ def main():
         initial_sidebar_state="expanded"
     )
 
+    # Initialize state
+    # init_session_state()
+
     # Header
     st.title("🎓 DS Navigator - Audio2RAG")
     st.markdown(
@@ -102,6 +119,30 @@ def main():
         # System information
         st.markdown("### 📊 System Status")
         st.info("✅ System ready")
+
+        # RAG settings
+        st.markdown("### 🔧 RAG Parameters")
+
+        top_k = st.slider(
+            "Number of sources",
+            min_value=1,
+            max_value=10,
+            value=5,
+            help="Number of chunks to retrieve from knowledge base"
+        )
+
+        similarity_threshold = st.slider(
+            "Relevance threshold",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.7,
+            step=0.05,
+            help="Minimum chunk relevance (0-1)"
+        )
+
+        # Update engine parameters
+        # st.session_state.engine.top_k = top_k
+        # st.session_state.engine.similarity_threshold = similarity_threshold
 
         # Project information
         st.markdown("---")
@@ -130,7 +171,18 @@ def main():
             with st.spinner("🔍 Searching knowledge base..."):
                 try:
                     # Query RAG engine
-                    result = asyncio.run(run(prompt))
+                    # result = st.session_state.engine.query(prompt)
+                    # result = run(question=prompt, top_k=top_k, similarity_threshold=similarity_threshold)
+                    resp = requests.post(
+                        "http://localhost:8000/forward",
+                        json={
+                            "question": prompt,
+                            "top_k": top_k,
+                            "similarity_threshold": similarity_threshold,
+                        },
+                        timeout=60,
+                    )
+                    result = resp.json()
 
                     # Display answer
                     st.markdown(result["answer"])
