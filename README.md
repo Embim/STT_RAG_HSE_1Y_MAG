@@ -70,7 +70,7 @@ LLM_MAX_TOKENS=2000
 
 ### 3. Поднимаем Infinity (эмбеддинг модель)
 ```bash
-docker-compose up -d infinity
+docker-compose up -d
 ```
 
 Проверяем, что работает:
@@ -80,7 +80,7 @@ curl http://localhost:7997/embeddings \
   -d '{"input":"тест"}'
 ```
 
-### 4. Загружаем данные в векторную БД
+### 4. Загружаем данные в векторную БД (все делаем из дирректории src)
 ```bash
 python -m downloader.ingest
 ```
@@ -95,22 +95,20 @@ json_data = [
 ]
 ```
 
-### 5. Тестируем RAG
+### 5. Тестируем RAG - смотрим что модель отвечает (секунд 7)
 ```bash
 python -m test
 ```
 
-Или напрямую в коде:
-```python
-from system.rag.pipeline import run
-import asyncio
-
-async def main():
-    answer = await run(question="Что такое осень?")
-    print(answer)
-
-asyncio.run(main())
+### 6. Поднимаем FastAPI - (можно проверить ручки)
+```bash
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
+
+### 7. Запускаем ui - streamlit на локал хосте (из корня проекта, в другом баше)
+```bash
+ streamlit run src/app/ui.py
+ ```
 
 ---
 
@@ -144,3 +142,11 @@ docker-compose.yaml       # Infinity контейнер
 requirements.txt          # Python зависимости
 ```
 
+## TO-DO
+- настроить so и stream режим
+- переехать на milvus контейнер
+- подключить трассировку через langfuse
+- собрать датасет и ввыбрать домен
+- выбрать метрики и оценить качество через эксперимент в langfuse
+- улучшить поиск
+- добавить логи 
