@@ -20,11 +20,13 @@ import os
 import asyncio
 import requests
 
-# Add project root to PYTHONPATH for module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
 # from src.system.engine import RAGEngine
-from src.system.rag.pipeline import run
+from system.rag.pipeline import run
 
 # def init_session_state():
 #     """

@@ -3,8 +3,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional
-from src.system.rag.pipeline import run
-from src.system.llm.llm_services import chat_vector_store_manager
+from system.rag.pipeline import run
+from system.llm.llm_services import chat_vector_store_manager
 
 app = FastAPI(title="DS Navigator API")
 
