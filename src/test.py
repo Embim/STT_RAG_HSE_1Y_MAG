@@ -4,7 +4,7 @@ from settings import settings
 from system.rag.vectore_store import VectorStoreManager
 from system.rag.pipeline import run
 
-query = 'что такое MCP'
+query = 'что такое Фотон'
 
 
 async def main():
