@@ -67,7 +67,8 @@ LLM_MAX_TOKENS=2000
 
 ### 3. Поднимаем Infinity (эмбеддинг модель)
 ```bash
-docker-compose up -d
+docker-compose -f docker-compose-infinity.yml up -d
+docker-compose -f docker-compose-weaviate.yml up -d
 ```
 
 Проверяем, что работает:
