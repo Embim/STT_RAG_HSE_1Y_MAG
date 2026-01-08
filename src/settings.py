@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 125
 
     K: int = 5
-    DEFAULT_SIMILARITY_THRESHOLD: float = 0.3
+    DEFAULT_SIMILARITY_THRESHOLD: float = 0.0
     HYBRID_SEARCH_ALPHA: float = 0.7
 
     LLM_MODEL: str

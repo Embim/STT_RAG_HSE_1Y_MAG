@@ -50,8 +50,9 @@ async def ingest_json_to_vector_store(data_list: List[Dict[str, str]]):
     
     texts = [doc.page_content for doc in all_docs]
     metas = [doc.metadata for doc in all_docs]
+    ids = [meta['hash'] for meta in metas]  # Используем hash как уникальный ID
     
-    await chat_vector_store_manager.add_texts(texts=texts, metadatas=metas)
+    await chat_vector_store_manager.add_texts(texts=texts, metadatas=metas, ids=ids)
     logger.info(f"Ingested {len(all_docs)} chunks from {len(data_list)} documents")
 
 

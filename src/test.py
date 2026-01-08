@@ -8,9 +8,9 @@ query = 'что такое Фотон'
 
 
 async def main():
-    answer = await run(question=query)
+    answer, context = await run(question=query)
 
-    return answer
+    return context, '\n', answer
 
 if __name__=='__main__':
     print(asyncio.run(main()))

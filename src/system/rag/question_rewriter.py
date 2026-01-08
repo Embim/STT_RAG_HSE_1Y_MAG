@@ -16,3 +16,4 @@ async def rewrite(question: str) -> str:
             HumanMessage(content=prompt, role='user')
         ]
     )
+
