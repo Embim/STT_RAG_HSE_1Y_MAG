@@ -1,0 +1,34 @@
+x-shared-logs: &shared-logs
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "100k"
+
+services:
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.28.0
+    container_name: weaviate
+    network_mode: host
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --scheme
+      - http
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      CLUSTER_HOSTNAME: "node1"
+      DEFAULT_VECTORIZER_MODULE: "text2vec-openai"
+      ENABLE_MODULES: "text2vec-openai"
+      OPENAI_APIKEY: "sk-dummy"
+      LOG_LEVEL: "debug"  # Для подробных логов
+      AUTOSCHEMA_ENABLED: "true"
+    volumes:
+      - weaviate-data:/var/lib/weaviate
+    <<: *shared-logs
+
+volumes:
+  weaviate-data:
