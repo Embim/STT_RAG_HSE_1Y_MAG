@@ -211,12 +211,11 @@ class PluginRegistry:
     def discover_all(self) -> None:
         """Обнаруживает все плагины во всех стандартных пакетах."""
         packages = [
-            "src.sources",
-            "src.processors.audio",
-            "src.processors.text",
-            "src.processors.vision",
-            "src.embedders",
-            "src.stores",
+            "src.downloader.src.sources",
+            "src.downloader.src.processors.audio",
+            "src.downloader.src.processors.text",
+            "src.downloader.src.processors.vision",
+            # src.embedders и src.stores удалены - используются адаптеры
         ]
         for package in packages:
             try:

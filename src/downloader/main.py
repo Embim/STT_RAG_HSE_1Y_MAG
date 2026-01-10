@@ -10,11 +10,18 @@ Video Processing Pipeline - CLI Interface.
     python main.py status
 """
 
+import sys
+from pathlib import Path
+
+# ВАЖНО: Добавляем корень проекта в sys.path ПЕРЕД любыми другими импортами
+# Это нужно для импорта src.downloader.adapters и src.system
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import argparse
 import logging
-import sys
 import warnings
-from pathlib import Path
 
 # Подавляем warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -46,9 +53,9 @@ def setup_logging(level: str = "INFO", log_file: str = None):
 
 def cmd_process(args):
     """Обрабатывает контент из источника."""
-    from src.core.config import ConfigLoader
-    from src.core.pipeline import PipelineBuilder
-    from src.utils.tracking import ProcessingTracker
+    from src.downloader.src.core.config import ConfigLoader
+    from src.downloader.src.core.pipeline import PipelineBuilder
+    from src.downloader.src.utils.tracking import ProcessingTracker
     import logging as log
 
     # Загружаем конфигурацию
@@ -139,9 +146,9 @@ def cmd_process(args):
 
 def cmd_search(args):
     """Ищет по базе."""
-    from src.core.config import ConfigLoader
-    from src.embedders.sentence_transformer import SentenceTransformerEmbedder
-    from src.stores.weaviate import WeaviateStore
+    from src.downloader.src.core.config import ConfigLoader
+    # DEPRECATED: src.embedders и src.stores удалены - используйте Streamlit UI для поиска
+    raise NotImplementedError("Команда search устарела. Используйте Streamlit UI: streamlit run src/app/ui.py")
 
     config = ConfigLoader.load(args.config)
 
@@ -191,27 +198,16 @@ def cmd_search(args):
 
 def cmd_serve(args):
     """Запускает API сервер."""
-    import uvicorn
-    from src.api.main import app
-
-    print(f"Starting API server at http://{args.host}:{args.port}")
-    print("Documentation: http://{args.host}:{args.port}/docs")
-
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level="info" if not args.quiet else "warning",
-    )
+    # DEPRECATED: Используйте основной API сервер проекта
+    raise NotImplementedError("Команда serve устарела. Используйте основной API: uvicorn src.api.main:app")
 
 
 def cmd_status(args):
     """Показывает статус системы."""
     import warnings
-    from src.core.config import ConfigLoader
-    from src.core.registry import PluginRegistry
-    from src.stores.weaviate import WeaviateStore
-    from src.utils.tracking import ProcessingTracker
+    from src.downloader.src.core.config import ConfigLoader
+    from src.downloader.src.core.registry import PluginRegistry
+    from src.downloader.src.utils.tracking import ProcessingTracker
 
     # Подавляем ResourceWarning и логи от Weaviate
     warnings.filterwarnings("ignore", category=ResourceWarning)
@@ -237,22 +233,20 @@ def cmd_status(args):
 
     # Статус хранилища
     print("\nVector Store:")
-    store = None
     try:
-        store = WeaviateStore(
-            url=config.store_url,
-            collection_name=config.store_collection,
+        from src.system.rag.vectore_store import VectorStoreManager
+        store = VectorStoreManager(
+            persist_directory=config.store_collection,
+            host="localhost",
+            port=8080
         )
-        store.connect()
-        count = store.count()
-        print(f"  URL: {config.store_url}")
+        # Получаем количество документов
+        count = store.collection.aggregate.over_all(total_count=True).total_count
+        print(f"  Host: localhost:8080")
         print(f"  Collection: {config.store_collection}")
         print(f"  Total records: {count}")
     except Exception as e:
         print(f"  Status: NOT CONNECTED ({e})")
-    finally:
-        if store:
-            store.close()
 
     # Статус tracker
     print("\nProcessing Tracker:")
