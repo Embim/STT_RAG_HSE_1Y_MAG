@@ -146,6 +146,43 @@ def main():
         # st.session_state.engine.top_k = top_k
         # st.session_state.engine.similarity_threshold = similarity_threshold
 
+        # YouTube ingestion panel
+        st.markdown("---")
+        st.markdown("### 📥 Загрузить YouTube видео")
+
+        with st.expander("YouTube", expanded=False):
+            youtube_url = st.text_input("URL YouTube видео", key="youtube_url")
+
+            if st.button("Обработать видео", key="process_youtube"):
+                if youtube_url:
+                    with st.spinner("Загрузка и транскрипция... Это может занять несколько минут"):
+                        try:
+                            from src.downloader.src.core.config import ConfigLoader
+                            from src.downloader.src.core.pipeline import PipelineBuilder
+
+                            # Создать pipeline
+                            config = ConfigLoader.load("src/downloader/config/config.yaml")
+                            builder = PipelineBuilder(config)
+                            pipeline = builder.build("youtube", {})
+
+                            # Обработать видео (скачивание + Whisper + чанки + Weaviate)
+                            results = pipeline.run(urls=[youtube_url], show_progress=False)
+
+                            if results and results[0].success:
+                                st.success(f"✅ Обработано успешно!")
+                                st.info(f"📼 {results[0].item.title}")
+                                st.metric("Чанков создано", len(results[0].item.chunks))
+                            else:
+                                error_msg = results[0].error_message if results else "Неизвестная ошибка"
+                                st.error(f"❌ Ошибка: {error_msg}")
+
+                        except Exception as e:
+                            import traceback
+                            st.error(f"❌ Ошибка обработки: {str(e)}")
+                            st.code(traceback.format_exc())
+                else:
+                    st.warning("Пожалуйста, введите URL видео")
+
         # Project information
         st.markdown("---")
         st.markdown("### ℹ️ About Project")
