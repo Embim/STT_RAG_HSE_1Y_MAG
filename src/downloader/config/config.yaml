@@ -1,0 +1,95 @@
+# Video Processing Pipeline Configuration v2.0
+
+# Paths (все на диске E:)
+paths:
+  base_dir: "E:/video_pipeline"
+  temp_dir: "E:/video_pipeline/temp"
+  audio_dir: "E:/video_pipeline/audio"
+  transcripts_dir: "E:/video_pipeline/transcripts"
+  archives_dir: "E:/video_pipeline/archives"
+  logs_dir: "E:/video_pipeline/logs"
+  processed_journal: "E:/video_pipeline/processed.json"
+  error_journal: "E:/video_pipeline/errors.json"
+
+# Источники данных
+sources:
+  youtube:
+    type: youtube
+    enabled: true
+    params:
+      output_dir: "E:/video_pipeline/audio"
+      audio_format: wav
+      max_retries: 3
+      retry_delay: 5
+
+  local_files:
+    type: local_files
+    enabled: true
+    params:
+      recursive: true
+      extensions:
+        - ".pdf"
+        - ".docx"
+        - ".txt"
+        - ".mp3"
+        - ".wav"
+        - ".mp4"
+
+# Процессоры
+processors:
+  whisper:
+    type: whisper
+    enabled: true
+    params:
+      model_name: "openai/whisper-large-v3-turbo"
+      device: cuda
+      compute_type: float16
+      language: ru
+      beam_size: 5
+
+  pdf:
+    type: pdf
+    enabled: true
+    params:
+      use_ocr: false
+
+  docx:
+    type: docx
+    enabled: true
+
+# Chunking
+chunking:
+  min_length: 50
+  max_length: 2000
+  merge_short: true
+
+# Embedder
+embedder:
+  type: sentence_transformer
+  model: "ai-forever/sbert_large_nlu_ru"
+  device: cuda
+  batch_size: 64
+  max_length: 512
+  normalize: true
+  use_fp16: true
+
+# Vector Store
+store:
+  type: weaviate
+  url: "http://localhost:8080"
+  collection: "VideoChunk"
+  vector_dimension: 1024
+  batch_size: 100
+
+# Processing
+processing:
+  continue_on_error: true
+  save_transcripts: true
+  upload_to_store: true
+  cleanup_temp_files: true
+  gpu_cache_clear_interval: 5
+
+# API
+api:
+  host: "0.0.0.0"
+  port: 8000

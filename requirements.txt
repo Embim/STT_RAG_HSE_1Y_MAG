@@ -199,3 +199,11 @@ xxhash==3.5.0
 yarl==1.20.1
 zipp==3.23.0
 zstandard==0.24.0
+
+# InputPipline dependencies (добавлено для интеграции)
+yt-dlp>=2024.1.0          # YouTube downloader
+librosa>=0.10.0           # Аудио обработка
+soundfile>=0.12.0         # Чтение/запись аудио
+pymupdf>=1.23.0           # PDF обработка
+python-docx>=1.1.0        # DOCX обработка
+coloredlogs>=15.0.1       # Улучшенное логирование
