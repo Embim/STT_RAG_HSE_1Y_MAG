@@ -25,7 +25,7 @@ class VectorStoreManager:
                 name=self.collection_name,
                 vectorizer_config=Configure.Vectorizer.text2vec_openai(
                     model="ai-forever/FRIDA",
-                    base_url="http://localhost:7997",
+                    base_url="http://host.docker.internal:7997",
                     vectorize_collection_name=False,
                 ),
                 properties=[

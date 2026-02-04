@@ -13,7 +13,7 @@ class InfinityEmbedder(BaseEmbedder):
     def __init__(self, url: str = "http://localhost:7997", batch_size: int = 32):
         self.url = url
         self.batch_size = batch_size
-        self.endpoint = f"{url}/embeddings"
+        self.endpoint = f"{url}/v1/embeddings"
 
     def setup(self, config: dict):
         """Проверить подключение к Infinity"""

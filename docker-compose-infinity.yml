@@ -6,9 +6,10 @@ x-shared-logs: &shared-logs
 
 services:
   infinity:
-    image: michaelf34/infinity:0.0.76
+    image: michaelf34/infinity:latest
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "7997:7997"
     command: >
       v2
       --model-id ai-forever/FRIDA
