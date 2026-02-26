@@ -1,13 +1,13 @@
 import asyncio
 from logging import getLogger
 from typing import Dict, Iterable, List, Optional
-from pathlib import Path
 import atexit
 import uuid
 import weaviate
 from weaviate.classes.config import Configure, Property, DataType
 from weaviate.classes.query import MetadataQuery
 from langchain_core.documents import Document
+from settings import settings
 
 logger = getLogger()
 
@@ -15,17 +15,17 @@ logger = getLogger()
 class VectorStoreManager:
     BATCH_SIZE = 100
 
-    def __init__(self, persist_directory, host: str = "localhost", port: int = 8080):
-        self.collection_name = Path(persist_directory).name.replace("-", "_").replace(".", "_")
-        self.client = weaviate.connect_to_local(host=host, port=port)
+    def __init__(self):
+        self.collection_name = settings.WEAVIATE_COLLECTION_NAME
+        self.client = weaviate.connect_to_local(host=settings.WEAVIATE_HOST, port=settings.WEAVIATE_PORT)
         atexit.register(self.close)
         
         if not self.client.collections.exists(self.collection_name):
             self.client.collections.create(
                 name=self.collection_name,
-                vector_config=Configure.Vectorizer.text2vec_openai(
+                vectorizer_config=Configure.Vectorizer.text2vec_openai(
                     model="ai-forever/FRIDA",
-                    base_url="http://localhost:7997/v1",
+                    base_url=settings.WEAVIATE_VECTORIZER_BASE_URL,
                     vectorize_collection_name=False,
                 ),
                 properties=[

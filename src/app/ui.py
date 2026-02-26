@@ -57,30 +57,37 @@ def display_message(role: str, content: str):
         st.markdown(content)
 
 
-def display_sources(sources: list):
-    """
-    Display list of sources as expander.
+# def display_sources(sources: list):
+#     """
+#     Display list of sources as expander.
 
-    Shows sources with timestamps for current answer.
-    Uses expander for compact display.
+#     Shows sources with timestamps for current answer.
+#     Uses expander for compact display.
 
-    Args:
-        sources (list): List of sources with metadata
-            [{"name": str, "timestamp": str, "url": str (optional)}]
+#     Args:
+#         sources (list): List of sources with metadata
+#             [{"name": str, "timestamp": str, "url": str (optional)}]
 
-    Example:
-        sources = [
-            {"name": "CS224N Lecture", "timestamp": "25:20"},
-            {"name": "PyData Talk", "timestamp": "07:00"}
-        ]
-        display_sources(sources)
-    """
-    if sources:
-        with st.expander("📚 Sources", expanded=False):
-            for idx, source in enumerate(sources, 1):
-                st.markdown(
-                    f"**{idx}.** {source['name']} - `{source['timestamp']}`"
-                )
+#     Example:
+#         sources = [
+#             {"name": "CS224N Lecture", "timestamp": "25:20"},
+#             {"name": "PyData Talk", "timestamp": "07:00"}
+#         ]
+#         display_sources(sources)
+#     """
+#     if sources:
+#         with st.expander("📚 Sources", expanded=False):
+#             for idx, source in enumerate(sources, 1):
+#                 st.markdown(
+#                     f"**{idx}.** {source['name']} - `{source['timestamp']}`"
+#                 )
+
+
+def display_context(context: str):
+    if not context:
+        return
+    with st.expander("📄 Retrieved context", expanded=False):
+        st.text(context)
 
 
 def main():
@@ -146,6 +153,30 @@ def main():
         # st.session_state.engine.top_k = top_k
         # st.session_state.engine.similarity_threshold = similarity_threshold
 
+        # YouTube ingest
+        st.markdown("---")
+        st.markdown("### 📥 Add Lecture")
+
+        yt_url = st.text_input(
+            "YouTube URL",
+            placeholder="https://www.youtube.com/watch?v=...",
+            label_visibility="collapsed",
+        )
+
+        if st.button("Load", use_container_width=True, disabled=not yt_url):
+            with st.spinner("⏳ Downloading and transcribing..."):
+                try:
+                    resp = requests.post(
+                        "http://localhost:8001/ingest",
+                        json={"url": yt_url},
+                        timeout=600,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    st.success(f"✅ Added: {data['title']}")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+
         # Project information
         st.markdown("---")
         st.markdown("### ℹ️ About Project")
@@ -176,7 +207,7 @@ def main():
                     # result = st.session_state.engine.query(prompt)
                     # result = run(question=prompt, top_k=top_k, similarity_threshold=similarity_threshold)
                     resp = requests.post(
-                        "http://localhost:8000/forward",
+                        "http://localhost:8001/forward",
                         json={
                             "question": prompt,
                             "top_k": top_k,
@@ -184,17 +215,14 @@ def main():
                         },
                         timeout=60,
                     )
-                    print("Response status code:", resp.status_code)
                     resp.raise_for_status()  # Raise error for bad status
                     result = resp.json()
-                    print("Result type:", type(result))
-                    print("Result:", result) 
                     # Display answer
                     st.markdown(result["answer"])
 
                     # Display sources
-                    if "sources" in result:
-                        display_sources(result["sources"])
+                    if "context" in result:
+                        display_context(result["context"])
 
                 except Exception as e:
                     error_msg = f"❌ Error processing query: {str(e)}"

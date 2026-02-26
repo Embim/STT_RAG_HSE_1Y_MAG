@@ -25,7 +25,7 @@ services:
       - DO_NOT_TRACK=1
       - HF_HUB_DISABLE_TELEMETRY=1
       - INFINITY_ANONYMOUS_USAGE_STATS=0
-      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_VISIBLE_DEVICES=0
     volumes:
       - ./infinity_data:/app/.cache
     runtime: nvidia
@@ -58,6 +58,31 @@ services:
     volumes:
       - weaviate-data:/var/lib/weaviate
     <<: *shared-logs
+
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: whisper
+    restart: unless-stopped
+    network_mode: host
+    profiles:
+      - asr
+      - full
+    environment:
+      - FASTER_WHISPER_SERVER_PORT=9000
+      - WHISPER__MODEL=Systran/faster-whisper-large-v3
+      - WHISPER__LANGUAGE=ru
+      - WHISPER__INFERENCE_DEVICE=cuda
+      - WHISPER__COMPUTE_TYPE=float16
+      - WHISPER__BEAM_SIZE=5
+      - HOST=0.0.0.0
+      - PORT=9000
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_VISIBLE_DEVICES=1
+    volumes:
+      - ~/models:/root/.cache/huggingface
+    runtime: nvidia
+    <<: *shared-logs
+
 
 volumes:
   weaviate-data:

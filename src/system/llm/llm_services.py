@@ -4,8 +4,8 @@ from openai import AsyncOpenAI
 from settings import settings
 
 
-def init_vectore_store_manager(persist_dir_path:str) -> VectorStoreManager:
-    return VectorStoreManager(persist_dir_path)
+def init_vectore_store_manager() -> VectorStoreManager:
+    return VectorStoreManager()
 
 
 class OpenRouterClient:
@@ -35,4 +35,4 @@ class OpenRouterClient:
 llm_rewrite = OpenRouterClient()
 llm_generate_asnwer = OpenRouterClient()
 
-chat_vector_store_manager = init_vectore_store_manager(settings.VECTORE_STORE_DIR)
+chat_vector_store_manager = init_vectore_store_manager()

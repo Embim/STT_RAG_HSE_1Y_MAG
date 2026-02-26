@@ -31,7 +31,7 @@ async def run(
         )
         final_json = {
             "answer": answer,
-            "sources": [{"name": "Empty_for_now", "timestamp": '00:11:22'}]
+            "context": context
         }
 
         return final_json

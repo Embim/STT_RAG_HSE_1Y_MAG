@@ -1,12 +1,21 @@
+import asyncio
+import logging
+import os
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional
+
 from system.rag.pipeline import run
 from system.llm.llm_services import chat_vector_store_manager
+from downloader.youtube import download_audio
+from downloader.transcriber import transcribe
+from downloader.ingest import ingest_json_to_vector_store
 
 app = FastAPI(title="DS Navigator API")
+logger = logging.getLogger(__name__)
 
 
 @app.get("/", tags=["Root"])
@@ -55,6 +64,33 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+class IngestRequest(BaseModel):
+    url: str = Field(..., description="YouTube video URL")
+
+
+@app.post("/ingest", tags=["Ingest"])
+async def ingest(req: IngestRequest):
+    try:
+        download_result = await asyncio.to_thread(download_audio, req.url)
+    except Exception:
+        raise HTTPException(status_code=422, detail="не удалось скачать видео")
+
+    try:
+        text = await transcribe(download_result.audio_path)
+    except Exception:
+        raise HTTPException(status_code=502, detail="сервис транскрибации недоступен")
+    finally:
+        os.remove(download_result.audio_path)
+
+    await ingest_json_to_vector_store([{"hash": download_result.video_id, "text": text}])
+
+    return {
+        "status": "ok",
+        "video_id": download_result.video_id,
+        "title": download_result.title,
+    }
+
+
 @app.post("/forward", tags=["Usage"])
 async def forward(req: ForwardRequest):
     try:
@@ -65,7 +101,8 @@ async def forward(req: ForwardRequest):
         )
 
         return result
-    except Exception:
+    except Exception as e:
+        logger.exception("Error in /forward: %s", e)
         raise HTTPException(
             status_code=403,
             detail="модель не смогла обработать данные"
