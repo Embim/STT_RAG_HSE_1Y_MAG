@@ -8,7 +8,7 @@ annotated-types==0.7.0
 anyio==4.10.0
 asttokens==3.0.0
 attrs==25.3.0
-Authlib==1.6.3
+Authlib
 banks==2.2.0
 beautifulsoup4==4.13.5
 bitsandbytes==0.47.0
@@ -191,7 +191,7 @@ uvicorn==0.35.0
 validators==0.35.0
 watchdog==6.0.0
 wcwidth==0.2.13
-weaviate-client==4.16.9
+weaviate-client>=4.20.1
 wheel==0.45.1
 wrapt==1.17.3
 xformers==0.0.32.post2

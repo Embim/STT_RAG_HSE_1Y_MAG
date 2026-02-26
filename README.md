@@ -67,13 +67,12 @@ LLM_MAX_TOKENS=2000
 
 ### 3. Поднимаем Infinity (эмбеддинг модель)
 ```bash
-docker-compose -f docker-compose-infinity.yml up -d
-docker-compose -f docker-compose-weaviate.yml up -d
+docker compose --profile full up -d
 ```
 
 Проверяем, что работает:
 ```bash
-curl http://localhost:7997/embeddings \
+curl http://localhost:7997/v1/embeddings \
   -H 'Content-Type: application/json' \
   -d '{"input":"тест"}'
 ```

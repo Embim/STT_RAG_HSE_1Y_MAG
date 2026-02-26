@@ -34,7 +34,7 @@ async def run(
             "sources": [{"name": "Empty_for_now", "timestamp": '00:11:22'}]
         }
 
-        return final_json, context
+        return final_json
     
     except PermissionDeniedError as e:
 

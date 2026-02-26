@@ -1,22 +1,63 @@
-name: rag_pipeline
+x-shared-logs: &shared-logs
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "100k"
 
 services:
-  weaviate:
-    image: semitechnologies/weaviate:latest
-    container_name: weaviate_rag
-    ports:
-      - "8080:8080"
-      - "50051:50051"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-      ENABLE_MODULES: ''
-      CLUSTER_HOSTNAME: 'node1'
-    volumes:
-      - weaviate_data:/var/lib/weaviate
+  infinity:
+    image: michaelf34/infinity:0.0.76
+    container_name: infinity
     restart: unless-stopped
+    network_mode: host
+    profiles:
+      - emb
+      - full
+    command: >
+      v2
+      --model-id ai-forever/FRIDA
+      --engine torch
+      --port "7997"
+      --url-prefix "/v1"
+    environment:
+      - HF_HOME=/app/.cache
+      - HF_HUB_ENABLE_HF_TRANSFER=0
+      - DO_NOT_TRACK=1
+      - HF_HUB_DISABLE_TELEMETRY=1
+      - INFINITY_ANONYMOUS_USAGE_STATS=0
+      - NVIDIA_VISIBLE_DEVICES=1
+    volumes:
+      - ./infinity_data:/app/.cache
+    runtime: nvidia
+    <<: *shared-logs
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.28.0
+    container_name: weaviate
+    network_mode: host
+    profiles:
+      - vdb
+      - full
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --scheme
+      - http
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      CLUSTER_HOSTNAME: "node1"
+      DEFAULT_VECTORIZER_MODULE: "text2vec-openai"
+      ENABLE_MODULES: "text2vec-openai"
+      OPENAI_APIKEY: "sk-dummy"
+      LOG_LEVEL: "debug"
+      AUTOSCHEMA_ENABLED: "true"
+    volumes:
+      - weaviate-data:/var/lib/weaviate
+    <<: *shared-logs
 
 volumes:
-  weaviate_data:
+  weaviate-data:

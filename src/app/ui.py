@@ -184,8 +184,11 @@ def main():
                         },
                         timeout=60,
                     )
+                    print("Response status code:", resp.status_code)
+                    resp.raise_for_status()  # Raise error for bad status
                     result = resp.json()
-
+                    print("Result type:", type(result))
+                    print("Result:", result) 
                     # Display answer
                     st.markdown(result["answer"])
 
