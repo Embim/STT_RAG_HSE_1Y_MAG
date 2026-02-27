@@ -242,6 +242,8 @@ class YouTubeSource(BaseSource):
                     "preferredquality": "0",
                 }
             ],
+            "keepvideo": True,  # Сохраняем оригинальное видео после конвертации
+            "writethumbnail": False,  # Не скачиваем миниатюры
             "retries": self.max_retries,
             "fragment_retries": self.max_retries,
             "socket_timeout": 30,

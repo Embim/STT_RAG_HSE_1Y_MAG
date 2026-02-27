@@ -251,12 +251,13 @@ class Pipeline:
                 self._save_transcript(item)
 
             # 7. Удаляем временные файлы (аудио) после успешной обработки
-            if item.source_path and item.source_path.exists():
-                try:
-                    item.source_path.unlink()
-                    logger.debug(f"Deleted temporary file: {item.source_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete {item.source_path}: {e}")
+            # ОТКЛЮЧЕНО: Сохраняем скачанные видео
+            # if item.source_path and item.source_path.exists():
+            #     try:
+            #         item.source_path.unlink()
+            #         logger.debug(f"Deleted temporary file: {item.source_path}")
+            #     except Exception as e:
+            #         logger.warning(f"Failed to delete {item.source_path}: {e}")
 
             processing_time = time.time() - start_time
 
