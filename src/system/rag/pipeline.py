@@ -1,5 +1,5 @@
 from settings import settings
-from system.llm.llm_services import chat_vector_store_manager
+from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
 from system.rag.vectore_store import VectorStoreManager
 from system.rag.question_rewriter import rewrite
 from system.rag.retriver import retrieve
@@ -13,7 +13,7 @@ async def run(
         question: str,
         top_k: int = settings.K,
         similarity_threshold: float = settings.DEFAULT_SIMILARITY_THRESHOLD,
-        vector_store_manager: VectorStoreManager = chat_vector_store_manager,
+        vector_store_manager: VectorStoreManager = CHAT_VECTORE_STORE_MANAGER,
 ):
     try:
         #TODO logs, history

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from system.rag.pipeline import run
-from system.llm.llm_services import chat_vector_store_manager
+from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
 from downloader.youtube import download_audio
 from downloader.transcriber import transcribe
 from downloader.ingest import ingest_json_to_vector_store
@@ -35,7 +35,7 @@ async def healthcheck():
 @app.get("/check-vdb", tags=["Health"])
 async def check_vdb():
     try:
-        collection = chat_vector_store_manager.vector_store._collection
+        collection = CHAT_VECTORE_STORE_MANAGER.vector_store._collection
         count = collection.count()
 
         return {

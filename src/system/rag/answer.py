@@ -1,7 +1,7 @@
 from typing import Dict, Iterable, List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 
-from system.llm.llm_services import llm_generate_asnwer
+from system.llm.llm_services import LLM_GENERATE_ANSWER
 from system.prompts import ANSWER_SYSTEM_PROMPT, FINAL_ANSWER_CONTEXT_SYSTEM
 from settings import settings
 
@@ -29,5 +29,5 @@ async def generate_answer(
         final_rag_content=final_rag_content
     )
 
-    return await llm_generate_asnwer.chat(messages)
+    return await LLM_GENERATE_ANSWER.chat(messages)
 

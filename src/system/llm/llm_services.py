@@ -32,7 +32,7 @@ class OpenRouterClient:
         return response.choices[0].message.content
 
 # # Использование
-llm_rewrite = OpenRouterClient()
-llm_generate_asnwer = OpenRouterClient()
+LLM_REWRITE = OpenRouterClient()
+LLM_GENERATE_ANSWER = OpenRouterClient()
 
-chat_vector_store_manager = init_vectore_store_manager()
+CHAT_VECTORE_STORE_MANAGER = init_vectore_store_manager()
