@@ -47,8 +47,14 @@
 git clone 
 cd STT_RAG_HSE_1Y_MAG
 
-# Ставим пакеты
-pip install -r requirements.txt
+# 1.2. Установить uv (если не установлен)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 1.3. Создать окружение и установить зависимости
+uv sync
+
+# 1.4. Активировать окружение
+source .venv/bin/activate
 ```
 
 ### 2. Настройка окружения
@@ -65,7 +71,7 @@ LLM_TEMPERATURE=0.7
 LLM_MAX_TOKENS=2000
 ```
 
-### 3. Поднимаем Infinity (эмбеддинг модель)
+### 3. Поднимаем docker с вбд, эмбедингами и виспером (можно выборочно через профайлы)
 ```bash
 docker compose --profile full up -d
 ```
@@ -77,7 +83,24 @@ curl http://localhost:7997/v1/embeddings \
   -d '{"input":"тест"}'
 ```
 
-### 4. Загружаем данные в векторную БД (все делаем из дирректории src)
+### 4. Тестируем RAG - смотрим что модель отвечает (секунд 7)
+```bash
+cd src
+
+python -m test
+```
+
+### 6. Поднимаем FastAPI - (можно проверить ручки)
+```bash
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8001
+```
+
+### 7. Запускаем ui - streamlit на локал хосте
+```bash
+streamlit run app/ui.py
+ ```
+
+### 8. Загружаем данные в векторную БД
 ```bash
 python -m downloader.ingest
 ```
@@ -91,22 +114,6 @@ json_data = [
     }
 ]
 ```
-
-### 5. Тестируем RAG - смотрим что модель отвечает (секунд 7)
-```bash
-python -m test
-```
-
-### 6. Поднимаем FastAPI - (можно проверить ручки)
-```bash
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
-```
-
-### 7. Запускаем ui - streamlit на локал хосте (из корня проекта, в другом баше)
-```bash
-streamlit run src/app/ui.py
- ```
-
 ---
 
 ## Архитектура проекта

@@ -1,0 +1,20 @@
+[project]
+name = "stt-rag-hse-1y-mag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.133.1",
+    "httpx[socks]>=0.28.1",
+    "langchain-core>=1.2.16",
+    "langchain-text-splitters>=1.1.1",
+    "openai>=2.24.0",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "requests>=2.32.5",
+    "streamlit>=1.54.0",
+    "uvicorn>=0.41.0",
+    "weaviate-client>=4.20.1",
+    "yt-dlp>=2026.2.21",
+]
