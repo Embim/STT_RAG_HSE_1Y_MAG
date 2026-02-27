@@ -57,30 +57,37 @@ def display_message(role: str, content: str):
         st.markdown(content)
 
 
-def display_sources(sources: list):
-    """
-    Display list of sources as expander.
+# def display_sources(sources: list):
+#     """
+#     Display list of sources as expander.
 
-    Shows sources with timestamps for current answer.
-    Uses expander for compact display.
+#     Shows sources with timestamps for current answer.
+#     Uses expander for compact display.
 
-    Args:
-        sources (list): List of sources with metadata
-            [{"name": str, "timestamp": str, "url": str (optional)}]
+#     Args:
+#         sources (list): List of sources with metadata
+#             [{"name": str, "timestamp": str, "url": str (optional)}]
 
-    Example:
-        sources = [
-            {"name": "CS224N Lecture", "timestamp": "25:20"},
-            {"name": "PyData Talk", "timestamp": "07:00"}
-        ]
-        display_sources(sources)
-    """
-    if sources:
-        with st.expander("📚 Sources", expanded=False):
-            for idx, source in enumerate(sources, 1):
-                st.markdown(
-                    f"**{idx}.** {source['name']} - `{source['timestamp']}`"
-                )
+#     Example:
+#         sources = [
+#             {"name": "CS224N Lecture", "timestamp": "25:20"},
+#             {"name": "PyData Talk", "timestamp": "07:00"}
+#         ]
+#         display_sources(sources)
+#     """
+#     if sources:
+#         with st.expander("📚 Sources", expanded=False):
+#             for idx, source in enumerate(sources, 1):
+#                 st.markdown(
+#                     f"**{idx}.** {source['name']} - `{source['timestamp']}`"
+#                 )
+
+
+def display_context(context: str):
+    if not context:
+        return
+    with st.expander("📄 Retrieved context", expanded=False):
+        st.text(context)
 
 
 def main():
@@ -146,42 +153,29 @@ def main():
         # st.session_state.engine.top_k = top_k
         # st.session_state.engine.similarity_threshold = similarity_threshold
 
-        # YouTube ingestion panel
+        # YouTube ingest
         st.markdown("---")
-        st.markdown("### 📥 Загрузить YouTube видео")
+        st.markdown("### 📥 Add Lecture")
 
-        with st.expander("YouTube", expanded=False):
-            youtube_url = st.text_input("URL YouTube видео", key="youtube_url")
+        yt_url = st.text_input(
+            "YouTube URL",
+            placeholder="https://www.youtube.com/watch?v=...",
+            label_visibility="collapsed",
+        )
 
-            if st.button("Обработать видео", key="process_youtube"):
-                if youtube_url:
-                    with st.spinner("Загрузка и транскрипция... Это может занять несколько минут"):
-                        try:
-                            from src.downloader.src.core.config import ConfigLoader
-                            from src.downloader.src.core.pipeline import PipelineBuilder
-
-                            # Создать pipeline
-                            config = ConfigLoader.load("src/downloader/config/config.yaml")
-                            builder = PipelineBuilder(config)
-                            pipeline = builder.build("youtube", {})
-
-                            # Обработать видео (скачивание + Whisper + чанки + Weaviate)
-                            results = pipeline.run(urls=[youtube_url], show_progress=False)
-
-                            if results and results[0].success:
-                                st.success(f"✅ Обработано успешно!")
-                                st.info(f"📼 {results[0].item.title}")
-                                st.metric("Чанков создано", len(results[0].item.chunks))
-                            else:
-                                error_msg = results[0].error_message if results else "Неизвестная ошибка"
-                                st.error(f"❌ Ошибка: {error_msg}")
-
-                        except Exception as e:
-                            import traceback
-                            st.error(f"❌ Ошибка обработки: {str(e)}")
-                            st.code(traceback.format_exc())
-                else:
-                    st.warning("Пожалуйста, введите URL видео")
+        if st.button("Load", use_container_width=True, disabled=not yt_url):
+            with st.spinner("⏳ Downloading and transcribing..."):
+                try:
+                    resp = requests.post(
+                        "http://localhost:8001/ingest",
+                        json={"url": yt_url},
+                        timeout=600,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    st.success(f"✅ Added: {data['title']}")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
 
         # Project information
         st.markdown("---")
@@ -213,7 +207,7 @@ def main():
                     # result = st.session_state.engine.query(prompt)
                     # result = run(question=prompt, top_k=top_k, similarity_threshold=similarity_threshold)
                     resp = requests.post(
-                        "http://localhost:8000/forward",
+                        "http://localhost:8001/forward",
                         json={
                             "question": prompt,
                             "top_k": top_k,
@@ -221,14 +215,14 @@ def main():
                         },
                         timeout=60,
                     )
+                    resp.raise_for_status()  # Raise error for bad status
                     result = resp.json()
-
                     # Display answer
                     st.markdown(result["answer"])
 
                     # Display sources
-                    if "sources" in result:
-                        display_sources(result["sources"])
+                    if "context" in result:
+                        display_context(result["context"])
 
                 except Exception as e:
                     error_msg = f"❌ Error processing query: {str(e)}"

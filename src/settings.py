@@ -1,18 +1,17 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
+ENV_PATH = Path(__file__).resolve().parent.parent / '.env'
 
 class Settings(BaseSettings):
 
-    PROJECT_ROOT: str = '/home/kovynev-sergey/Documents/projects/STT_RAG_HSE_1Y_MAG/'
-    DATA_DIR: str = PROJECT_ROOT + "data"
-    TRANSCRIPTS_DIR: str = DATA_DIR + "/transcripts"
-    VECTORE_STORE_DIR: str = DATA_DIR + '/vectore_store'
-
-    WEAVIATE_URL: str = "http://localhost:8080"
+    WEAVIATE_HOST: str = "localhost"
+    WEAVIATE_PORT: int = 8080
     WEAVIATE_COLLECTION_NAME: str = "LectureChunks"
 
-    EMBEDDING_URL: str = 'http://localhost:7997/embeddings'
+    EMBEDDING_URL: str = 'http://localhost:7997/v1/embeddings'
+    WEAVIATE_VECTORIZER_BASE_URL: str = 'http://localhost:7997'
+    WHISPER_URL: str = 'http://localhost:8000'
 
     CHUNK_SIZE: int =  800
     CHUNK_OVERLAP: int = 125
@@ -30,7 +29,7 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 2000
 
     class Config:
-        env_file = '/home/kovynev-sergey/Documents/projects/STT_RAG_HSE_1Y_MAG/.env'
+        env_file = ENV_PATH
         env_file_encoding = 'utf-8'
 
 settings = Settings()
