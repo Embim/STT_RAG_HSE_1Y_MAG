@@ -1,3 +1,5 @@
+import logging
+
 from settings import settings
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
 from system.rag.vectore_store import VectorStoreManager
@@ -8,6 +10,8 @@ from system.exceptions import LLMPermissionDeniedError
 
 from openai import PermissionDeniedError
 
+logger = logging.getLogger(__name__)
+
 
 async def run(
         question: str,
@@ -16,27 +20,21 @@ async def run(
         vector_store_manager: VectorStoreManager = CHAT_VECTORE_STORE_MANAGER,
 ):
     try:
-        #TODO logs, history
-        # rewritten_question = await rewrite(question)
-        print('rewritten_question', question)
+        logger.info("RAG query: %r (top_k=%d, threshold=%.2f)", question, top_k, similarity_threshold)
         context = await retrieve(
             vector_store_manager=vector_store_manager,
             query=question,
-            k = top_k,
+            k=top_k,
             similarity_threshold=similarity_threshold
         )
+        logger.info("Retrieved context (%d chars)", len(context))
         answer = await generate_answer(
-            question_rewritten = question,
+            question_rewritten=question,
             final_rag_content=context
         )
-        final_json = {
-            "answer": answer,
-            "context": context
-        }
+        logger.info("Answer generated (%d chars)", len(answer))
+        return {"answer": answer, "context": context}
 
-        return final_json
-    
     except PermissionDeniedError as e:
-
-        print(e)
+        logger.error("LLM permission denied: %s", e)
 

@@ -4,12 +4,19 @@ x-shared-logs: &shared-logs
     options:
       max-size: "100k"
 
+networks:
+  rag-net:
+    driver: bridge
+
 services:
   infinity:
-    image: michaelf34/infinity:0.0.76
+    image: michaelf34/infinity:latest
     container_name: infinity
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - rag-net
+    ports:
+      - "7997:7997"
     profiles:
       - emb
       - full
@@ -34,7 +41,11 @@ services:
   weaviate:
     image: cr.weaviate.io/semitechnologies/weaviate:1.28.0
     container_name: weaviate
-    network_mode: host
+    networks:
+      - rag-net
+    ports:
+      - "8080:8080"
+      - "50051:50051"
     profiles:
       - vdb
       - full
@@ -63,13 +74,16 @@ services:
     image: fedirz/faster-whisper-server:latest-cuda
     container_name: whisper
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - rag-net
+    ports:
+      - "8000:8000"
     profiles:
       - asr
       - full
     environment:
       - FASTER_WHISPER_SERVER_PORT=9000
-      - WHISPER__MODEL=Systran/faster-whisper-large-v3
+      - WHISPER__MODEL=deepdml/faster-whisper-large-v3-turbo-ct2
       - WHISPER__LANGUAGE=ru
       - WHISPER__INFERENCE_DEVICE=cuda
       - WHISPER__COMPUTE_TYPE=float16
@@ -79,7 +93,7 @@ services:
       - HF_HOME=/root/.cache/huggingface
       - NVIDIA_VISIBLE_DEVICES=1
     volumes:
-      - ~/models:/root/.cache/huggingface
+      - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache/huggingface
     runtime: nvidia
     <<: *shared-logs
 

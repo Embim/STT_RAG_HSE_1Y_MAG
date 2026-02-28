@@ -1,3 +1,4 @@
+import ast
 import asyncio
 from logging import getLogger
 from typing import Dict, Iterable, List, Optional
@@ -64,11 +65,18 @@ class VectorStoreManager:
             if ids:
                 obj_uuid = self._hash_to_uuid(ids[i])
             
-            uuid_result = self.collection.data.insert(
-                properties=properties,
-                uuid=obj_uuid
-            )
-            all_ids.append(str(uuid_result))
+            try:
+                uuid_result = self.collection.data.insert(
+                    properties=properties,
+                    uuid=obj_uuid
+                )
+                all_ids.append(str(uuid_result))
+            except Exception as e:
+                if "already exists" in str(e):
+                    logger.warning("Skipping duplicate object: %s", obj_uuid)
+                    all_ids.append(str(obj_uuid))
+                else:
+                    raise
             
             if (i + 1) % self.BATCH_SIZE == 0:
                 logger.info("Processed %d texts.", i + 1)
@@ -93,7 +101,7 @@ class VectorStoreManager:
             if similarity_score >= similarity_threshold:
                 doc = Document(
                     page_content=obj.properties["text"],
-                    metadata=eval(obj.properties.get("metadata", "{}"))
+                    metadata=ast.literal_eval(obj.properties.get("metadata", "{}"))
                 )
                 results.append((doc, similarity_score))
 

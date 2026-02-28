@@ -57,6 +57,19 @@ uv sync
 source .venv/bin/activate
 ```
 
+**Windows (PowerShell):**
+```powershell
+# 1.2. Установить uv
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# После установки перезапустите терминал, чтобы uv появился в PATH
+
+# 1.3. Создать окружение и установить зависимости
+uv sync
+
+# 1.4. Активировать окружение
+.venv\Scripts\activate
+```
+
 ### 2. Настройка окружения
 
 Создай `.env` файл в корне проекта:
