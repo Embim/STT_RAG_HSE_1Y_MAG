@@ -1,7 +1,11 @@
+import logging
 from typing import Optional, Dict, Any
-from system.rag.vectore_store import VectorStoreManager
+
 from openai import AsyncOpenAI
 from settings import settings
+from system.rag.vectore_store import VectorStoreManager
+
+logger = logging.getLogger(__name__)
 
 
 def init_vectore_store_manager() -> VectorStoreManager:
@@ -22,6 +26,7 @@ class OpenRouterClient:
         )
 
     async def chat(self, messages: list, **kwargs) -> str:
+        logger.debug("LLM request: model=%s, messages=%d", self.model, len(messages))
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -29,7 +34,9 @@ class OpenRouterClient:
             max_tokens=settings.LLM_MAX_TOKENS,
             **kwargs
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        logger.debug("LLM response: %d chars", len(content))
+        return content
 
 # # Использование
 LLM_REWRITE = OpenRouterClient()

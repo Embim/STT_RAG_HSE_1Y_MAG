@@ -1,9 +1,13 @@
+import logging
 from typing import Dict, Iterable, List, Optional
+
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 
 from system.llm.llm_services import LLM_GENERATE_ANSWER
 from system.prompts import ANSWER_SYSTEM_PROMPT, FINAL_ANSWER_CONTEXT_SYSTEM
 from settings import settings
+
+logger = logging.getLogger(__name__)
 
 def _build_anser_messages(
     question_rewritten: str,
@@ -24,10 +28,12 @@ async def generate_answer(
     question_rewritten: str,
     final_rag_content: str
 ) -> str:
+    logger.info("Generating answer (context=%d chars)", len(final_rag_content))
     messages = _build_anser_messages(
         question_rewritten=question_rewritten,
-        final_rag_content=final_rag_content
+        final_rag_content=final_rag_content,
     )
-
-    return await LLM_GENERATE_ANSWER.chat(messages)
+    answer = await LLM_GENERATE_ANSWER.chat(messages)
+    logger.info("Answer generated (%d chars)", len(answer))
+    return answer
 

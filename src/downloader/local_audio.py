@@ -1,9 +1,12 @@
 import hashlib
+import logging
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,8 +55,11 @@ def extract_audio_from_video(video_path: str, output_dir: str | None = None) -> 
         str(dst),
     ]
 
+    logger.info("Extracting audio: %s → %s", src.name, dst.name)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
+        logger.error("FFmpeg failed for %s:\n%s", src.name, proc.stderr)
         raise RuntimeError(f"FFmpeg failed:\n{proc.stderr}")
 
+    logger.info("Audio extracted: %s (%.1f MB)", dst.name, dst.stat().st_size / 1024 / 1024)
     return LocalAudioResult(audio_path=str(dst), file_id=file_id, title=title)

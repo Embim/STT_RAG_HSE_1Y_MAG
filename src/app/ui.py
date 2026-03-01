@@ -157,87 +157,50 @@ def main():
         st.markdown("---")
         st.markdown("### 📥 Add Lecture")
 
-        tab_video, tab_playlist, tab_upload = st.tabs(["Video", "Playlist", "Upload"])
+        tab_youtube, tab_upload = st.tabs(["YouTube", "Upload"])
 
-        # --- Tab 1: Single Video ---
-        with tab_video:
+        # --- Tab 1: YouTube (video or playlist) ---
+        with tab_youtube:
             yt_url = st.text_input(
                 "YouTube URL",
-                placeholder="https://www.youtube.com/watch?v=...",
+                placeholder="https://www.youtube.com/watch?v=... or playlist?list=...",
                 label_visibility="collapsed",
-                key="yt_single_url",
+                key="yt_url",
             )
-            export_single = st.checkbox("Export transcript as TXT", key="export_single")
-            keep_video_single = st.checkbox("Download & keep full video", key="keep_video_single")
+            export_yt = st.checkbox("Export transcript as TXT", key="export_yt")
+            keep_video_yt = st.checkbox("Download & keep full video", key="keep_video_yt")
 
-            if st.button("Load Video", use_container_width=True, disabled=not yt_url, key="btn_single"):
+            if st.button("Load", use_container_width=True, disabled=not yt_url, key="btn_yt"):
                 with st.spinner("⏳ Downloading and transcribing..."):
                     try:
                         resp = requests.post(
                             "http://localhost:8001/ingest",
-                            json={"url": yt_url, "export_txt": export_single, "keep_video": keep_video_single},
-                            timeout=600,
-                        )
-                        resp.raise_for_status()
-                        data = resp.json()
-                        st.success(f"✅ Added: {data['title']}")
-                        if export_single and "transcript" in data:
-                            st.session_state["last_transcript"] = (data["title"], data["transcript"])
-                    except Exception as e:
-                        st.error(f"❌ Error: {e}")
-
-            if st.session_state.get("last_transcript"):
-                title, transcript = st.session_state["last_transcript"]
-                st.download_button(
-                    label="Download transcript (.txt)",
-                    data=transcript,
-                    file_name=f"{title}.txt",
-                    mime="text/plain",
-                    key="dl_single",
-                )
-
-        # --- Tab 2: Playlist ---
-        with tab_playlist:
-            pl_url = st.text_input(
-                "Playlist URL",
-                placeholder="https://www.youtube.com/playlist?list=...",
-                label_visibility="collapsed",
-                key="yt_playlist_url",
-            )
-            export_playlist = st.checkbox("Export transcripts as TXT", key="export_playlist")
-            keep_video_playlist = st.checkbox("Download & keep full video", key="keep_video_playlist")
-
-            if st.button("Load Playlist", use_container_width=True, disabled=not pl_url, key="btn_playlist"):
-                with st.spinner("⏳ Loading playlist..."):
-                    try:
-                        resp = requests.post(
-                            "http://localhost:8001/ingest-playlist",
-                            json={"url": pl_url, "export_txt": export_playlist, "keep_video": keep_video_playlist},
+                            json={"url": yt_url, "export_txt": export_yt, "keep_video": keep_video_yt},
                             timeout=3600,
                         )
                         resp.raise_for_status()
                         data = resp.json()
                         st.success(
-                            f"✅ Ingested: {data['ingested_count']} videos"
+                            f"✅ Ingested: {data['ingested_count']} video(s)"
                             + (f" | ❌ Errors: {data['error_count']}" if data["error_count"] else "")
                         )
                         for err in data.get("errors", []):
-                            st.error(f"❌ {err.get('title', err.get('video_id', '?'))}: {err['error']}")
-                        if export_playlist and data["items"]:
-                            st.session_state["playlist_transcripts"] = [
+                            st.error(f"❌ {err['url']}: {err['error']}")
+                        if export_yt and data["items"]:
+                            st.session_state["yt_transcripts"] = [
                                 (item["title"], item.get("transcript", ""))
                                 for item in data["items"]
                             ]
                     except Exception as e:
                         st.error(f"❌ Error: {e}")
 
-            for i, (title, transcript) in enumerate(st.session_state.get("playlist_transcripts", [])):
+            for i, (title, transcript) in enumerate(st.session_state.get("yt_transcripts", [])):
                 st.download_button(
                     label=f"⬇️ {title}.txt",
                     data=transcript,
                     file_name=f"{title}.txt",
                     mime="text/plain",
-                    key=f"dl_playlist_{i}",
+                    key=f"dl_yt_{i}",
                 )
 
         # --- Tab 3: Local Files ---
