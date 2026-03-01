@@ -1,5 +1,6 @@
+import ast
 import asyncio
-from logging import getLogger
+import logging
 from typing import Dict, Iterable, List, Optional
 import atexit
 import uuid
@@ -9,7 +10,7 @@ from weaviate.classes.query import MetadataQuery
 from langchain_core.documents import Document
 from settings import settings
 
-logger = getLogger()
+logger = logging.getLogger(__name__)
 
 
 class VectorStoreManager:
@@ -17,10 +18,12 @@ class VectorStoreManager:
 
     def __init__(self):
         self.collection_name = settings.WEAVIATE_COLLECTION_NAME
+        logger.info("Connecting to Weaviate at %s:%s", settings.WEAVIATE_HOST, settings.WEAVIATE_PORT)
         self.client = weaviate.connect_to_local(host=settings.WEAVIATE_HOST, port=settings.WEAVIATE_PORT)
         atexit.register(self.close)
-        
+
         if not self.client.collections.exists(self.collection_name):
+            logger.info("Collection %r not found, creating...", self.collection_name)
             self.client.collections.create(
                 name=self.collection_name,
                 vectorizer_config=Configure.Vectorizer.text2vec_openai(
@@ -35,6 +38,7 @@ class VectorStoreManager:
             )
         
         self.collection = self.client.collections.get(self.collection_name)
+        logger.info("VectorStoreManager ready: collection=%r", self.collection_name)
 
     def _hash_to_uuid(self, hash_str: str) -> str:
         """Преобразует hash в детерминированный UUID."""
@@ -64,11 +68,18 @@ class VectorStoreManager:
             if ids:
                 obj_uuid = self._hash_to_uuid(ids[i])
             
-            uuid_result = self.collection.data.insert(
-                properties=properties,
-                uuid=obj_uuid
-            )
-            all_ids.append(str(uuid_result))
+            try:
+                uuid_result = self.collection.data.insert(
+                    properties=properties,
+                    uuid=obj_uuid
+                )
+                all_ids.append(str(uuid_result))
+            except Exception as e:
+                if "already exists" in str(e):
+                    logger.warning("Skipping duplicate object: %s", obj_uuid)
+                    all_ids.append(str(obj_uuid))
+                else:
+                    raise
             
             if (i + 1) % self.BATCH_SIZE == 0:
                 logger.info("Processed %d texts.", i + 1)
@@ -80,6 +91,7 @@ class VectorStoreManager:
         self, query: str, k: int, similarity_threshold: float
     ) -> list[tuple[Document, float]]:
         """Search relevance top-K docs in vector DB."""
+        logger.debug("VDB search: query=%r, k=%d, threshold=%.2f", query[:60], k, similarity_threshold)
         response = self.collection.query.near_text(
             query=query,
             limit=k,
@@ -93,7 +105,7 @@ class VectorStoreManager:
             if similarity_score >= similarity_threshold:
                 doc = Document(
                     page_content=obj.properties["text"],
-                    metadata=eval(obj.properties.get("metadata", "{}"))
+                    metadata=ast.literal_eval(obj.properties.get("metadata", "{}"))
                 )
                 results.append((doc, similarity_score))
 

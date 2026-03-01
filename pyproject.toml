@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "colorlog>=6.10.1",
     "fastapi>=0.133.1",
     "httpx[socks]>=0.28.1",
     "langchain-core>=1.2.16",
@@ -12,6 +13,7 @@ dependencies = [
     "openai>=2.24.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
+    "python-multipart>=0.0.22",
     "requests>=2.32.5",
     "streamlit>=1.54.0",
     "uvicorn>=0.41.0",

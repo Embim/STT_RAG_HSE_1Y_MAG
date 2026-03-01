@@ -153,29 +153,107 @@ def main():
         # st.session_state.engine.top_k = top_k
         # st.session_state.engine.similarity_threshold = similarity_threshold
 
-        # YouTube ingest
+        # Ingest section with tabs
         st.markdown("---")
         st.markdown("### 📥 Add Lecture")
 
-        yt_url = st.text_input(
-            "YouTube URL",
-            placeholder="https://www.youtube.com/watch?v=...",
-            label_visibility="collapsed",
-        )
+        tab_youtube, tab_upload = st.tabs(["YouTube", "Upload"])
 
-        if st.button("Load", use_container_width=True, disabled=not yt_url):
-            with st.spinner("⏳ Downloading and transcribing..."):
-                try:
-                    resp = requests.post(
-                        "http://localhost:8001/ingest",
-                        json={"url": yt_url},
-                        timeout=600,
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    st.success(f"✅ Added: {data['title']}")
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
+        # --- Tab 1: YouTube (video or playlist) ---
+        with tab_youtube:
+            yt_url = st.text_input(
+                "YouTube URL",
+                placeholder="https://www.youtube.com/watch?v=... or playlist?list=...",
+                label_visibility="collapsed",
+                key="yt_url",
+            )
+            export_yt = st.checkbox("Export transcript as TXT", key="export_yt")
+            keep_video_yt = st.checkbox("Download & keep full video", key="keep_video_yt")
+
+            if st.button("Load", use_container_width=True, disabled=not yt_url, key="btn_yt"):
+                with st.spinner("⏳ Downloading and transcribing..."):
+                    try:
+                        resp = requests.post(
+                            "http://localhost:8001/ingest",
+                            json={"url": yt_url, "export_txt": export_yt, "keep_video": keep_video_yt},
+                            timeout=3600,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        st.success(
+                            f"✅ Ingested: {data['ingested_count']} video(s)"
+                            + (f" | ❌ Errors: {data['error_count']}" if data["error_count"] else "")
+                        )
+                        for err in data.get("errors", []):
+                            st.error(f"❌ {err['url']}: {err['error']}")
+                        if export_yt and data["items"]:
+                            st.session_state["yt_transcripts"] = [
+                                (item["title"], item.get("transcript", ""))
+                                for item in data["items"]
+                            ]
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+
+            for i, (title, transcript) in enumerate(st.session_state.get("yt_transcripts", [])):
+                st.download_button(
+                    label=f"⬇️ {title}.txt",
+                    data=transcript,
+                    file_name=f"{title}.txt",
+                    mime="text/plain",
+                    key=f"dl_yt_{i}",
+                )
+
+        # --- Tab 3: Local Files ---
+        with tab_upload:
+            uploaded_files = st.file_uploader(
+                "Upload video files",
+                type=["mp4", "mkv", "avi", "mov", "webm"],
+                accept_multiple_files=True,
+                key="uploader",
+            )
+            export_upload = st.checkbox("Export transcripts as TXT", key="export_upload")
+
+            if st.button(
+                "Transcribe & Ingest",
+                use_container_width=True,
+                disabled=not uploaded_files,
+                key="btn_upload",
+            ):
+                with st.spinner("⏳ Uploading and transcribing..."):
+                    try:
+                        files_payload = [
+                            ("files", (f.name, f.getvalue(), "application/octet-stream"))
+                            for f in uploaded_files
+                        ]
+                        resp = requests.post(
+                            f"http://localhost:8001/ingest-upload?export_txt={'true' if export_upload else 'false'}",
+                            files=files_payload,
+                            timeout=3600,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        st.success(
+                            f"✅ Ingested: {data['ingested_count']} files"
+                            + (f" | ❌ Errors: {data['error_count']}" if data["error_count"] else "")
+                        )
+                        for err in data.get("errors", []):
+                            st.error(f"❌ {err['filename']}: {err['error']}")
+                        if export_upload and data["items"]:
+                            st.session_state["upload_transcripts"] = [
+                                (item["title"], item.get("transcript", ""))
+                                for item in data["items"]
+                            ]
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+
+            for i, (title, transcript) in enumerate(st.session_state.get("upload_transcripts", [])):
+                st.download_button(
+                    label=f"⬇️ {title}.txt",
+                    data=transcript,
+                    file_name=f"{title}.txt",
+                    mime="text/plain",
+                    key=f"dl_upload_{i}",
+                )
 
         # Project information
         st.markdown("---")

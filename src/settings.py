@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     DEFAULT_SIMILARITY_THRESHOLD: float = 0.0
     HYBRID_SEARCH_ALPHA: float = 0.7
 
+    HUGGINGFACE_CACHE: str = ""
+
     LLM_MODEL: str
     LLM_API_KEY_1: str
     LLM_API_KEY_2: str

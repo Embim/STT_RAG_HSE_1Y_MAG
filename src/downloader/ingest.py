@@ -4,9 +4,9 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
 from settings import settings
-from logging import getLogger
+import logging
 
-logger = getLogger()
+logger = logging.getLogger(__name__)
 
 
 def create_documents_from_json(data: Dict[str, str]) -> List[Document]:

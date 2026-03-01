@@ -1,7 +1,10 @@
+import logging
 from typing import Dict, Any, List
 
 from system.prompts import ALL_INFORMATION_FOR_ANSWER
 from system.rag.vectore_store import VectorStoreManager
+
+logger = logging.getLogger(__name__)
 
 def _prepare_docs(pairs) -> list:
     docs = []
@@ -24,14 +27,11 @@ def _pack_results(
 
 
 async def retrieve(
-    vector_store_manager: VectorStoreManager, 
+    vector_store_manager: VectorStoreManager,
     query: str,
     k: int,
     similarity_threshold: float
 ) -> Dict[str, Any]:
-    
     pairs = await vector_store_manager.search(query, k=k, similarity_threshold=similarity_threshold)
-
-    result = _pack_results(_prepare_docs(pairs))
-
-    return result
+    logger.info("Retrieved %d/%d chunks (threshold=%.2f)", len(pairs), k, similarity_threshold)
+    return _pack_results(_prepare_docs(pairs))
