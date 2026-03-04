@@ -88,6 +88,7 @@ services:
       - WHISPER__INFERENCE_DEVICE=cuda
       - WHISPER__COMPUTE_TYPE=float16
       - WHISPER__BEAM_SIZE=5
+      - WHISPER__BATCH_SIZE=16
       - HOST=0.0.0.0
       - PORT=9000
       - HF_HOME=/root/.cache/huggingface

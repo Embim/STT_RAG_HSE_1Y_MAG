@@ -12,8 +12,9 @@ from fastapi import UploadFile
 
 from downloader.transcriber import transcribe
 from downloader.ingest import ingest_json_to_vector_store
-from downloader.youtube import download_audio, download_video, get_playlist_urls
-from downloader.local_audio import extract_audio_from_video
+from downloader.sources.youtube import download_audio, download_video, get_playlist_urls
+from downloader.sources.local_audio import extract_audio_from_video
+from settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,21 +42,35 @@ async def process_youtube(url: str, keep_video: bool, export_txt: bool) -> dict:
 
     Detects automatically: if path is /playlist — processes all videos,
     otherwise treats as a single video.
+
+    Videos are processed with limited concurrency (settings.INGEST_CONCURRENCY)
+    so that downloading the next video overlaps with transcribing the current one.
     """
     is_playlist = urlparse(url).path == "/playlist"
     video_urls = await asyncio.to_thread(get_playlist_urls, url) if is_playlist else [url]
     logger.info("%s detected: %d video(s)", "Playlist" if is_playlist else "Video", len(video_urls))
 
-    items, errors = [], []
-    for video_url in video_urls:
-        try:
+    sem = asyncio.Semaphore(settings.INGEST_CONCURRENCY)
+
+    async def _process_one(video_url: str) -> dict:
+        async with sem:
             audio_path, doc_id, title = await prepare_audio(video_url, keep_video)
             item = await transcribe_and_ingest(audio_path=audio_path, doc_id=doc_id, title=title, export_txt=export_txt)
             item["video_id"] = item.pop("doc_id")
-            items.append(item)
-        except Exception as e:
-            logger.error("Failed to process %s: %s", video_url, e)
-            errors.append({"url": video_url, "error": str(e)})
+            return item
+
+    results = await asyncio.gather(
+        *[_process_one(u) for u in video_urls],
+        return_exceptions=True,
+    )
+
+    items, errors = [], []
+    for video_url, result in zip(video_urls, results):
+        if isinstance(result, Exception):
+            logger.error("Failed to process %s: %s", video_url, result)
+            errors.append({"url": video_url, "error": str(result)})
+        else:
+            items.append(result)
 
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
 
