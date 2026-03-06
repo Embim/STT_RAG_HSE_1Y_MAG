@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     WEAVIATE_VECTORIZER_BASE_URL: str = 'http://localhost:7997'
     WHISPER_URL: str = 'http://localhost:8000'
 
+    INGEST_CONCURRENCY: int = 3
+
     CHUNK_SIZE: int =  800
     CHUNK_OVERLAP: int = 125
 

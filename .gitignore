@@ -215,3 +215,4 @@ data
 
 .vscode
 volumes/
+hf_cache/
