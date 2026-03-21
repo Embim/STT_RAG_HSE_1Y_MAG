@@ -207,6 +207,7 @@ services:
       LANGFUSE_INIT_USER_NAME: Admin
       LANGFUSE_INIT_USER_EMAIL: admin@hse-rag.local
       LANGFUSE_INIT_USER_PASSWORD: changeme
+      ENCRYPTION_KEY: ac5ac17cb554c3a2fcaf2810c78cda5c2350d4faefe0a9bf685e4ed83449499d
       REDIS_HOST: langfuse-redis
       REDIS_PORT: 6379
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
@@ -252,6 +253,7 @@ services:
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000/default
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
+      ENCRYPTION_KEY: ac5ac17cb554c3a2fcaf2810c78cda5c2350d4faefe0a9bf685e4ed83449499d
       # S3 Event Upload (mandatory for Langfuse v3)
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-media
       LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1

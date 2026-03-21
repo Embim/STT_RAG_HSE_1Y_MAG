@@ -1,5 +1,6 @@
 import logging
 
+from langfuse import get_client
 from settings import settings
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
 from system.rag.vectore_store import VectorStoreManager
@@ -23,6 +24,11 @@ async def run(
 ):
     try:
         logger.info("RAG query: %r (top_k=%d, threshold=%.2f)", question, top_k, similarity_threshold)
+        langfuse = get_client()
+        langfuse.update_current_trace(
+            tags=["rag"],
+            metadata={"top_k": top_k, "threshold": similarity_threshold},
+        )
         context = await retrieve(
             vector_store_manager=vector_store_manager,
             query=question,
