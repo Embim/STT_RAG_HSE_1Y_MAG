@@ -3,6 +3,7 @@ from typing import Dict, Any, List
 
 from system.prompts import ALL_INFORMATION_FOR_ANSWER
 from system.rag.vectore_store import VectorStoreManager
+from system.tracing import observe
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ def _pack_results(
     return all_info_for_answer
 
 
+@observe(name="vector-retrieval")
 async def retrieve(
     vector_store_manager: VectorStoreManager,
     query: str,

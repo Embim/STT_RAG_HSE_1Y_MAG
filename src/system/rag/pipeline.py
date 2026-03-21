@@ -7,12 +7,14 @@ from system.rag.question_rewriter import rewrite
 from system.rag.retriver import retrieve
 from system.rag.answer import generate_answer
 from system.exceptions import LLMPermissionDeniedError
+from system.tracing import observe
 
 from openai import PermissionDeniedError
 
 logger = logging.getLogger(__name__)
 
 
+@observe(name="rag-pipeline")
 async def run(
         question: str,
         top_k: int = settings.K,

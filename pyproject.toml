@@ -19,4 +19,5 @@ dependencies = [
     "uvicorn>=0.41.0",
     "weaviate-client>=4.20.1",
     "yt-dlp>=2026.2.21",
+    "langfuse>=3.0.0",
 ]

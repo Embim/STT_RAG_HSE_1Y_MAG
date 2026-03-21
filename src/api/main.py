@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List
 
@@ -9,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from system.rag.pipeline import run
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
+from system.tracing import flush as langfuse_flush
 from downloader.processor import process_youtube, process_uploaded_files
 from api.schemas import ForwardRequest, IngestRequest
 
@@ -38,7 +40,14 @@ _file.setFormatter(logging.Formatter(
 
 logging.basicConfig(level=logging.INFO, handlers=[_console, _file])
 
-app = FastAPI(title="DS Navigator API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    langfuse_flush()
+
+
+app = FastAPI(title="DS Navigator API", lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
 
@@ -60,8 +69,8 @@ async def healthcheck():
 @app.get("/check-vdb", tags=["Health"])
 async def check_vdb():
     try:
-        collection = CHAT_VECTORE_STORE_MANAGER.vector_store._collection
-        count = collection.count()
+        collection = CHAT_VECTORE_STORE_MANAGER.collection
+        count = collection.aggregate.over_all(total_count=True).total_count
         return {"status": "ok", "documents_in_vdb": count}
     except Exception:
         raise HTTPException(status_code=500, detail="vector db is not available")

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 2000
 
+    # Langfuse observability
+    LANGFUSE_ENABLED: bool = True
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_BASE_URL: str = "http://localhost:3000"
+
     class Config:
         env_file = ENV_PATH
         env_file_encoding = 'utf-8'

@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, Base
 
 from system.llm.llm_services import LLM_GENERATE_ANSWER
 from system.prompts import ANSWER_SYSTEM_PROMPT, FINAL_ANSWER_CONTEXT_SYSTEM
+from system.tracing import observe
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ def _build_anser_messages(
 
     return messages
 
+@observe(name="answer-generation")
 async def generate_answer(
     question_rewritten: str,
     final_rag_content: str
