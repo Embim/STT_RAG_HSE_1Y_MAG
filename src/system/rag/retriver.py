@@ -1,8 +1,8 @@
 import logging
 from typing import Dict, Any, List
 
-from system.prompts import ALL_INFORMATION_FOR_ANSWER
 from system.rag.vectore_store import VectorStoreManager
+from system.tracing import observe
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +17,11 @@ def _prepare_docs(pairs) -> list:
  
 def _pack_results(
     docs: List[Any]
-) -> Dict[str, Any]:
-
-    text = "\n\n".join([doc.page_content for doc in docs])
-
-    all_info_for_answer = ALL_INFORMATION_FOR_ANSWER.format(context = text)
-
-    return all_info_for_answer
+) -> str:
+    return "\n\n".join([doc.page_content for doc in docs])
 
 
+@observe(name="vector-retrieval")
 async def retrieve(
     vector_store_manager: VectorStoreManager,
     query: str,

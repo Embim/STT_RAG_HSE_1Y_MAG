@@ -99,5 +99,181 @@ services:
     <<: *shared-logs
 
 
+  langfuse-postgres:
+    image: postgres:16-alpine
+    container_name: langfuse-postgres
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    <<: *shared-logs
+
+  langfuse-redis:
+    image: redis:7-alpine
+    container_name: langfuse-redis
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    <<: *shared-logs
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.12-alpine
+    container_name: langfuse-clickhouse
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    environment:
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_DB: default
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse-config/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+    <<: *shared-logs
+
+  langfuse-minio:
+    image: minio/minio:latest
+    container_name: langfuse-minio
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    ports:
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: langfuse
+      MINIO_ROOT_PASSWORD: langfuse_secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - langfuse-minio-data:/data
+    <<: *shared-logs
+
+  langfuse-minio-init:
+    image: minio/mc:latest
+    container_name: langfuse-minio-init
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    depends_on:
+      - langfuse-minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5 &&
+      mc alias set myminio http://langfuse-minio:9000 langfuse langfuse_secret &&
+      mc mb --ignore-existing myminio/langfuse-media &&
+      echo 'Bucket created'
+      "
+    <<: *shared-logs
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: langfuse-web
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    ports:
+      - "3000:3000"
+    depends_on:
+      - langfuse-postgres
+      - langfuse-redis
+      - langfuse-clickhouse
+      - langfuse-minio
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: langfuse-nextauth-secret-key-32ch
+      SALT: langfuse-salt-key-for-hashing-32c
+      LANGFUSE_INIT_ORG_ID: hse-rag-org
+      LANGFUSE_INIT_ORG_NAME: HSE RAG
+      LANGFUSE_INIT_PROJECT_ID: stt-rag-hse-project
+      LANGFUSE_INIT_PROJECT_NAME: STT RAG HSE
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: lf_pk_local_dev_hse_rag_1234567
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: lf_sk_local_dev_hse_rag_1234567
+      LANGFUSE_INIT_USER_NAME: Admin
+      LANGFUSE_INIT_USER_EMAIL: admin@hse-rag.local
+      LANGFUSE_INIT_USER_PASSWORD: changeme
+      ENCRYPTION_KEY: ac5ac17cb554c3a2fcaf2810c78cda5c2350d4faefe0a9bf685e4ed83449499d
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000/default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      # S3 Event Upload (mandatory for Langfuse v3)
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-media
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: langfuse_secret
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      # S3 Media Upload (optional)
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: langfuse_secret
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+    <<: *shared-logs
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: langfuse-worker
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - langfuse
+    depends_on:
+      - langfuse-postgres
+      - langfuse-redis
+      - langfuse-clickhouse
+      - langfuse-minio
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000/default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      ENCRYPTION_KEY: ac5ac17cb554c3a2fcaf2810c78cda5c2350d4faefe0a9bf685e4ed83449499d
+      # S3 Event Upload (mandatory for Langfuse v3)
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-media
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: langfuse_secret
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      # S3 Media Upload (optional)
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-media
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: langfuse_secret
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+    <<: *shared-logs
+
 volumes:
   weaviate-data:
+  langfuse-postgres-data:
+  langfuse-clickhouse-data:
+  langfuse-minio-data:

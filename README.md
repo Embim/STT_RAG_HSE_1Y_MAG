@@ -86,7 +86,7 @@ LLM_MAX_TOKENS=2000
 
 ### 3. Поднимаем docker с вбд, эмбедингами и виспером (можно выборочно через профайлы)
 ```bash
-docker compose --profile full up -d
+docker compose --profile full --profile langfuse up -d
 ```
 
 Проверяем, что работает:
@@ -105,7 +105,7 @@ python -m test
 
 ### 6. Поднимаем FastAPI - (можно проверить ручки)
 ```bash
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8001
+python -m uvicorn api.main:src/app --host 0.0.0.0 --port 8001
 ```
 
 ### 7. Запускаем ui - streamlit на локал хосте

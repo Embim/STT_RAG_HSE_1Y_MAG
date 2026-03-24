@@ -1,5 +1,6 @@
 import logging
 
+from langfuse import get_client
 from settings import settings
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
 from system.rag.vectore_store import VectorStoreManager
@@ -7,12 +8,14 @@ from system.rag.question_rewriter import rewrite
 from system.rag.retriver import retrieve
 from system.rag.answer import generate_answer
 from system.exceptions import LLMPermissionDeniedError
+from system.tracing import observe
 
 from openai import PermissionDeniedError
 
 logger = logging.getLogger(__name__)
 
 
+@observe(name="rag-pipeline")
 async def run(
         question: str,
         top_k: int = settings.K,
@@ -21,6 +24,11 @@ async def run(
 ):
     try:
         logger.info("RAG query: %r (top_k=%d, threshold=%.2f)", question, top_k, similarity_threshold)
+        langfuse = get_client()
+        langfuse.update_current_trace(
+            tags=["rag"],
+            metadata={"top_k": top_k, "threshold": similarity_threshold},
+        )
         context = await retrieve(
             vector_store_manager=vector_store_manager,
             query=question,

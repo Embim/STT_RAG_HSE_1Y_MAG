@@ -20,6 +20,8 @@ import os
 import asyncio
 import requests
 
+_NO_PROXY = {"http": None, "https": None}
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.dirname(current_dir)
 if src_dir not in sys.path:
@@ -177,6 +179,7 @@ def main():
                             "http://localhost:8001/ingest",
                             json={"url": yt_url, "export_txt": export_yt, "keep_video": keep_video_yt},
                             timeout=3600,
+                            proxies=_NO_PROXY,
                         )
                         resp.raise_for_status()
                         data = resp.json()
@@ -229,6 +232,7 @@ def main():
                             f"http://localhost:8001/ingest-upload?export_txt={'true' if export_upload else 'false'}",
                             files=files_payload,
                             timeout=3600,
+                            proxies=_NO_PROXY,
                         )
                         resp.raise_for_status()
                         data = resp.json()
@@ -292,6 +296,7 @@ def main():
                             "similarity_threshold": similarity_threshold,
                         },
                         timeout=60,
+                        proxies=_NO_PROXY,
                     )
                     resp.raise_for_status()  # Raise error for bad status
                     result = resp.json()

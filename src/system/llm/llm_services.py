@@ -1,9 +1,11 @@
 import logging
 from typing import Optional, Dict, Any
 
+from langfuse import get_client
 from openai import AsyncOpenAI
 from settings import settings
 from system.rag.vectore_store import VectorStoreManager
+from system.tracing import observe
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ class OpenRouterClient:
             base_url=base_url
         )
 
+    @observe(name="llm-call", capture_input=False, capture_output=False)
     async def chat(self, messages: list, **kwargs) -> str:
         logger.debug("LLM request: model=%s, messages=%d", self.model, len(messages))
         response = await self.client.chat.completions.create(
@@ -35,6 +38,21 @@ class OpenRouterClient:
             **kwargs
         )
         content = response.choices[0].message.content
+        if response.usage:
+            langfuse = get_client()
+            question_content = messages[-1].content if hasattr(messages[-1], "content") else str(messages[-1])
+            prompt_content = messages[1].content if len(messages) > 1 and hasattr(messages[1], "content") else ""
+            langfuse.update_current_generation(
+                model=self.model,
+                usage_details={
+                    "input": response.usage.prompt_tokens,
+                    "output": response.usage.completion_tokens,
+                    "total": response.usage.total_tokens,
+                },
+                input=question_content,
+                output=content,
+                metadata={"prompt": prompt_content},
+            )
         logger.debug("LLM response: %d chars", len(content))
         return content
 
