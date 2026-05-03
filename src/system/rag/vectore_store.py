@@ -6,7 +6,7 @@ import atexit
 import uuid
 import weaviate
 from weaviate.classes.config import Configure, Property, DataType
-from weaviate.classes.query import MetadataQuery
+from weaviate.classes.query import Filter, MetadataQuery
 from langchain_core.documents import Document
 from settings import settings
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class VectorStoreManager:
     BATCH_SIZE = 100
+    TOP_LOG_CANDIDATES = 3
 
     def __init__(self):
         self.collection_name = settings.WEAVIATE_COLLECTION_NAME
@@ -45,6 +46,28 @@ class VectorStoreManager:
         # Используем UUID5 для генерации детерминированного UUID из hash
         namespace = uuid.UUID('00000000-0000-0000-0000-000000000000')
         return str(uuid.uuid5(namespace, hash_str))
+
+    @staticmethod
+    def _safe_parse_metadata(raw_metadata: str) -> Dict:
+        try:
+            return ast.literal_eval(raw_metadata) if raw_metadata else {}
+        except (ValueError, SyntaxError):
+            logger.warning("Failed to parse metadata, using empty dict")
+            return {}
+
+    def list_source_titles(self, limit: int = 5000) -> List[str]:
+        """Return sorted unique source titles from metadata."""
+        response = self.collection.query.fetch_objects(
+            limit=limit,
+            return_properties=["metadata"],
+        )
+        titles = set()
+        for obj in response.objects:
+            metadata = self._safe_parse_metadata(obj.properties.get("metadata", "{}"))
+            source_title = metadata.get("title") or metadata.get("source_file_name")
+            if source_title:
+                titles.add(str(source_title))
+        return sorted(titles)
 
     async def add_texts(
         self,
@@ -88,26 +111,69 @@ class VectorStoreManager:
         return all_ids
 
     async def search(
-        self, query: str, k: int, similarity_threshold: float
+        self,
+        query: str,
+        k: int,
+        similarity_threshold: float,
+        source_file_name: str | None = None,
+        source_title: str | None = None,
     ) -> list[tuple[Document, float]]:
         """Search relevance top-K docs in vector DB."""
-        logger.debug("VDB search: query=%r, k=%d, threshold=%.2f", query[:60], k, similarity_threshold)
+        candidate_limit = k
+        if source_file_name or source_title:
+            candidate_limit = max(k * 20, 200)
+
+        logger.info(
+            "VDB search: query=%r, k=%d, threshold=%.2f, source_file_name=%r, source_title=%r, candidate_limit=%d",
+            query[:60],
+            k,
+            similarity_threshold,
+            source_file_name,
+            source_title,
+            candidate_limit,
+        )
         response = self.collection.query.near_text(
             query=query,
-            limit=k,
-            return_metadata=MetadataQuery(distance=True)
+            limit=candidate_limit,
+            return_metadata=MetadataQuery(distance=True),
+            filters=(
+                Filter.by_property("metadata").like("*title*")
+                if source_title
+                else (Filter.by_property("metadata").like("*source_file_name*") if source_file_name else None)
+            ),
         )
 
         results = []
-        for obj in response.objects:
+        logged_candidates = 0
+        for idx, obj in enumerate(response.objects):
             similarity_score = 1 - (obj.metadata.distance or 0)
+            metadata = self._safe_parse_metadata(obj.properties.get("metadata", "{}"))
+
+            if source_file_name and metadata.get("source_file_name") != source_file_name:
+                continue
+            if source_title and metadata.get("title") != source_title:
+                continue
+
+            if logged_candidates < self.TOP_LOG_CANDIDATES:
+                logger.info(
+                    "VDB top candidate #%d: score=%.4f distance=%.4f hash=%s chunk=%s text=%r",
+                    logged_candidates + 1,
+                    similarity_score,
+                    obj.metadata.distance or 0.0,
+                    metadata.get("hash"),
+                    metadata.get("chunk_index"),
+                    obj.properties.get("text", ""),
+                )
+                logged_candidates += 1
             
             if similarity_score >= similarity_threshold:
                 doc = Document(
                     page_content=obj.properties["text"],
-                    metadata=ast.literal_eval(obj.properties.get("metadata", "{}"))
+                    metadata=metadata
                 )
                 results.append((doc, similarity_score))
+                if len(results) >= k:
+                    break
 
         return results
 

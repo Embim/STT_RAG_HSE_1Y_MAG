@@ -1,11 +1,10 @@
 import logging
 from typing import Optional, Dict, Any
 
-from langfuse import get_client
 from openai import AsyncOpenAI
 from settings import settings
 from system.rag.vectore_store import VectorStoreManager
-from system.tracing import observe
+from system.tracing import get_client, observe
 
 logger = logging.getLogger(__name__)
 

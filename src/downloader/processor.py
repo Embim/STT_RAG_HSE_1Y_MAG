@@ -55,7 +55,13 @@ async def process_youtube(url: str, keep_video: bool, export_txt: bool) -> dict:
     async def _process_one(video_url: str) -> dict:
         async with sem:
             audio_path, doc_id, title = await prepare_audio(video_url, keep_video)
-            item = await transcribe_and_ingest(audio_path=audio_path, doc_id=doc_id, title=title, export_txt=export_txt)
+            item = await transcribe_and_ingest(
+                audio_path=audio_path,
+                doc_id=doc_id,
+                title=title,
+                export_txt=export_txt,
+                source_url=video_url,
+            )
             item["video_id"] = item.pop("doc_id")
             return item
 
@@ -96,6 +102,8 @@ async def process_uploaded_files(files: List[UploadFile], export_txt: bool) -> d
                     doc_id=local_result.file_id,
                     title=local_result.title,
                     export_txt=export_txt,
+                    source_url=None,
+                    source_file_name=upload_file.filename,
                 )
                 item["file_id"] = item.pop("doc_id")
                 items.append(item)
@@ -108,11 +116,20 @@ async def process_uploaded_files(files: List[UploadFile], export_txt: bool) -> d
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
 
 
-async def transcribe_and_ingest(audio_path: str, doc_id: str, title: str, export_txt: bool) -> dict:
+async def transcribe_and_ingest(
+    audio_path: str,
+    doc_id: str,
+    title: str,
+    export_txt: bool,
+    source_url: str | None,
+    source_file_name: str | None = None,
+) -> dict:
     """Transcribe audio, ingest into vector store, optionally save transcript to disk."""
     logger.info("Transcribing: %s (%s)", title, audio_path)
     try:
-        text = await transcribe(audio_path)
+        transcript = await transcribe(audio_path)
+        text = transcript["text"]
+        segments = transcript.get("segments", [])
         logger.info("Transcription done: %s — %d chars", title, len(text))
     finally:
         try:
@@ -121,7 +138,18 @@ async def transcribe_and_ingest(audio_path: str, doc_id: str, title: str, export
             pass
 
     logger.info("Ingesting into vector store: %s", title)
-    await ingest_json_to_vector_store([{"hash": doc_id, "text": text}])
+    await ingest_json_to_vector_store(
+        [
+            {
+                "hash": doc_id,
+                "text": text,
+                "segments": segments,
+                "title": title,
+                "source_url": source_url,
+                "source_file_name": source_file_name,
+            }
+        ]
+    )
     logger.info("Vector store ingest complete: %s", title)
 
     if export_txt:
@@ -131,6 +159,8 @@ async def transcribe_and_ingest(audio_path: str, doc_id: str, title: str, export
         logger.info("Transcript saved: %s", txt_path)
 
     result = {"status": "ok", "doc_id": doc_id, "title": title}
+    if source_file_name:
+        result["source_file_name"] = source_file_name
     if export_txt:
         result["transcript"] = text
     return result

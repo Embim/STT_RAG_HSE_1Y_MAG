@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any, Dict, List
 
 import httpx
 
@@ -8,7 +9,23 @@ from settings import settings
 logger = logging.getLogger(__name__)
 
 
-async def transcribe(audio_path: str) -> str:
+def _extract_segments(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    segments: List[Dict[str, Any]] = []
+    for segment in payload.get("segments", []):
+        text = str(segment.get("text", "")).strip()
+        if not text:
+            continue
+        segments.append(
+            {
+                "text": text,
+                "start": float(segment.get("start", 0.0) or 0.0),
+                "end": float(segment.get("end", 0.0) or 0.0),
+            }
+        )
+    return segments
+
+
+async def transcribe(audio_path: str) -> Dict[str, Any]:
     """Transcribe an audio file via the Whisper HTTP API.
 
     Uses the OpenAI-compatible endpoint:
@@ -18,7 +35,7 @@ async def transcribe(audio_path: str) -> str:
         audio_path: Absolute path to the audio file (mp3).
 
     Returns:
-        Transcribed text.
+        Dict with full transcript text and segment-level timestamps.
     """
     path = Path(audio_path)
     file_size_mb = path.stat().st_size / 1024 / 1024
@@ -28,9 +45,17 @@ async def transcribe(audio_path: str) -> str:
             response = await client.post(
                 f"{settings.WHISPER_URL}/v1/audio/transcriptions",
                 files={"file": (path.name, f, "audio/mpeg")},
-                data={"model": "whisper-1", "response_format": "text"},
+                data={"model": "whisper-1", "response_format": "verbose_json"},
             )
             response.raise_for_status()
 
-    logger.info("Whisper response: %d chars for %s", len(response.text), path.name)
-    return response.text
+    payload = response.json()
+    text = str(payload.get("text", ""))
+    segments = _extract_segments(payload)
+    logger.info(
+        "Whisper response: %d chars, %d segments for %s",
+        len(text),
+        len(segments),
+        path.name,
+    )
+    return {"text": text, "segments": segments}

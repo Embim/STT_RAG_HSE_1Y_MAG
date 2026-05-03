@@ -94,7 +94,24 @@ async def ingest_upload(files: List[UploadFile] = File(...), export_txt: bool = 
 @app.post("/forward", tags=["Usage"])
 async def forward(req: ForwardRequest):
     try:
-        return await run(question=req.question, top_k=req.top_k, similarity_threshold=req.similarity_threshold)
+        return await run(
+            question=req.question,
+            top_k=req.top_k,
+            similarity_threshold=req.similarity_threshold,
+            use_rewrite=req.use_rewrite,
+            source_file_name=req.source_file_name,
+            source_title=req.source_title,
+        )
     except Exception as e:
         logger.exception("Error in /forward: %s", e)
         raise HTTPException(status_code=403, detail="модель не смогла обработать данные")
+
+
+@app.get("/source-files", tags=["Usage"])
+async def source_files():
+    try:
+        files = CHAT_VECTORE_STORE_MANAGER.list_source_titles()
+        return {"files": files}
+    except Exception as e:
+        logger.exception("Error in /source-files: %s", e)
+        raise HTTPException(status_code=500, detail="не удалось получить список файлов")

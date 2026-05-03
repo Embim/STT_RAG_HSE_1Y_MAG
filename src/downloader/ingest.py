@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Dict
+from typing import Any, Dict, List
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
@@ -9,33 +9,108 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def create_documents_from_json(data: Dict[str, str]) -> List[Document]:
-    """Разбивает текст на чанки и создает документы."""
-    
+def _create_documents_from_text(data: Dict[str, Any]) -> List[Document]:
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.CHUNK_SIZE,
         chunk_overlap=settings.CHUNK_OVERLAP,
         separators=["\n\n", "\n", ". ", " ", ""]
     )
-    
+
     chunks = text_splitter.split_text(data["text"])
-    
+
     documents = [
         Document(
             page_content=chunk,
             metadata={
                 "hash": data["hash"],
                 "chunk_index": i,
-                "total_chunks": len(chunks)
+                "total_chunks": len(chunks),
+                "title": data.get("title"),
+                "source_url": data.get("source_url"),
+                "source_file_name": data.get("source_file_name"),
             }
         )
         for i, chunk in enumerate(chunks)
     ]
-    
+
     return documents
 
 
-async def ingest_json_to_vector_store(data_list: List[Dict[str, str]]):
+def _create_documents_from_segments(data: Dict[str, Any]) -> List[Document]:
+    segments = data.get("segments", [])
+    if not segments:
+        return _create_documents_from_text(data)
+
+    chunks: List[Dict[str, Any]] = []
+    current_text_parts: List[str] = []
+    current_start: float | None = None
+    current_end: float | None = None
+    current_size = 0
+
+    for segment in segments:
+        segment_text = str(segment.get("text", "")).strip()
+        if not segment_text:
+            continue
+        segment_start = float(segment.get("start", 0.0) or 0.0)
+        segment_end = float(segment.get("end", segment_start) or segment_start)
+
+        next_size = current_size + len(segment_text) + (1 if current_text_parts else 0)
+        if current_text_parts and next_size > settings.CHUNK_SIZE:
+            chunks.append(
+                {
+                    "text": " ".join(current_text_parts),
+                    "start_sec": current_start,
+                    "end_sec": current_end,
+                }
+            )
+            current_text_parts = [segment_text]
+            current_start = segment_start
+            current_end = segment_end
+            current_size = len(segment_text)
+            continue
+
+        if not current_text_parts:
+            current_start = segment_start
+        current_text_parts.append(segment_text)
+        current_end = segment_end
+        current_size = next_size
+
+    if current_text_parts:
+        chunks.append(
+            {
+                "text": " ".join(current_text_parts),
+                "start_sec": current_start,
+                "end_sec": current_end,
+            }
+        )
+
+    documents = [
+        Document(
+            page_content=chunk["text"],
+            metadata={
+                "hash": data["hash"],
+                "chunk_index": idx,
+                "total_chunks": len(chunks),
+                "start_sec": chunk["start_sec"],
+                "end_sec": chunk["end_sec"],
+                "title": data.get("title"),
+                "source_url": data.get("source_url"),
+                "source_file_name": data.get("source_file_name"),
+            },
+        )
+        for idx, chunk in enumerate(chunks)
+    ]
+    return documents
+
+
+def create_documents_from_json(data: Dict[str, Any]) -> List[Document]:
+    """Создает документы для ingest; при наличии segments сохраняет таймстемпы."""
+    if data.get("segments"):
+        return _create_documents_from_segments(data)
+    return _create_documents_from_text(data)
+
+
+async def ingest_json_to_vector_store(data_list: List[Dict[str, Any]]):
     """Загружает JSON данные в векторную БД."""
     
     all_docs: List[Document] = []

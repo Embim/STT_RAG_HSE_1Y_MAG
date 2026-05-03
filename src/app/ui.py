@@ -18,6 +18,7 @@ import streamlit as st
 import sys
 import os
 import asyncio
+import time
 import requests
 
 _NO_PROXY = {"http": None, "https": None}
@@ -27,20 +28,7 @@ src_dir = os.path.dirname(current_dir)
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-# from src.system.engine import RAGEngine
 from system.rag.pipeline import run
-
-# def init_session_state():
-#     """
-#     Initialize Streamlit session state.
-
-#     Creates variables for storing:
-#     - engine: RAG engine instance
-
-#     Called once on page load.
-#     """
-#     if "engine" not in st.session_state:
-#         st.session_state.engine = RAGEngine()
 
 
 def display_message(role: str, content: str):
@@ -59,37 +47,21 @@ def display_message(role: str, content: str):
         st.markdown(content)
 
 
-# def display_sources(sources: list):
-#     """
-#     Display list of sources as expander.
-
-#     Shows sources with timestamps for current answer.
-#     Uses expander for compact display.
-
-#     Args:
-#         sources (list): List of sources with metadata
-#             [{"name": str, "timestamp": str, "url": str (optional)}]
-
-#     Example:
-#         sources = [
-#             {"name": "CS224N Lecture", "timestamp": "25:20"},
-#             {"name": "PyData Talk", "timestamp": "07:00"}
-#         ]
-#         display_sources(sources)
-#     """
-#     if sources:
-#         with st.expander("📚 Sources", expanded=False):
-#             for idx, source in enumerate(sources, 1):
-#                 st.markdown(
-#                     f"**{idx}.** {source['name']} - `{source['timestamp']}`"
-#                 )
-
-
 def display_context(context: str):
     if not context:
         return
     with st.expander("📄 Retrieved context", expanded=False):
         st.text(context)
+
+
+def load_source_files() -> list[str]:
+    resp = requests.get(
+        "http://localhost:8001/source-files",
+        timeout=30,
+        proxies=_NO_PROXY,
+    )
+    resp.raise_for_status()
+    return resp.json().get("files", [])
 
 
 def main():
@@ -112,9 +84,6 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
-
-    # Initialize state
-    # init_session_state()
 
     # Header
     st.title("🎓 DS Navigator - Audio2RAG")
@@ -146,14 +115,34 @@ def main():
             "Relevance threshold",
             min_value=0.0,
             max_value=1.0,
-            value=0.7,
+            value=0.5,
             step=0.05,
             help="Minimum chunk relevance (0-1)"
         )
+        use_rewrite = st.checkbox(
+            "Rewrite question before retrieval",
+            value=True,
+            help="Reduces noisy matches by reformulating short/ambiguous queries",
+        )
 
-        # Update engine parameters
-        # st.session_state.engine.top_k = top_k
-        # st.session_state.engine.similarity_threshold = similarity_threshold
+        st.markdown("### 📁 Search Scope")
+        if "source_files" not in st.session_state:
+            st.session_state["source_files"] = []
+        if st.button("Refresh file list", use_container_width=True, key="refresh_source_files"):
+            try:
+                st.session_state["source_files"] = load_source_files()
+            except Exception as e:
+                st.warning(f"Failed to refresh file list: {e}")
+        if not st.session_state["source_files"]:
+            try:
+                st.session_state["source_files"] = load_source_files()
+            except Exception:
+                pass
+        selected_source_file = st.selectbox(
+            "Search in video",
+            options=["All files"] + st.session_state["source_files"],
+            help="Limit retrieval to a single video title",
+        )
 
         # Ingest section with tabs
         st.markdown("---")
@@ -222,11 +211,20 @@ def main():
                 disabled=not uploaded_files,
                 key="btn_upload",
             ):
-                with st.spinner("⏳ Uploading and transcribing..."):
+                total_files = len(uploaded_files)
+                progress_bar = st.progress(0.0, text=f"⏳ Starting upload: 0/{total_files}")
+                status_box = st.empty()
+                started_at = time.time()
+
+                all_items = []
+                all_errors = []
+                ingested_total = 0
+
+                for index, upload_file in enumerate(uploaded_files, start=1):
+                    status_box.info(f"Processing {index}/{total_files}: {upload_file.name}")
                     try:
                         files_payload = [
-                            ("files", (f.name, f.getvalue(), "application/octet-stream"))
-                            for f in uploaded_files
+                            ("files", (upload_file.name, upload_file.getvalue(), "application/octet-stream"))
                         ]
                         resp = requests.post(
                             f"http://localhost:8001/ingest-upload?export_txt={'true' if export_upload else 'false'}",
@@ -236,19 +234,37 @@ def main():
                         )
                         resp.raise_for_status()
                         data = resp.json()
-                        st.success(
-                            f"✅ Ingested: {data['ingested_count']} files"
-                            + (f" | ❌ Errors: {data['error_count']}" if data["error_count"] else "")
-                        )
-                        for err in data.get("errors", []):
-                            st.error(f"❌ {err['filename']}: {err['error']}")
-                        if export_upload and data["items"]:
-                            st.session_state["upload_transcripts"] = [
-                                (item["title"], item.get("transcript", ""))
-                                for item in data["items"]
-                            ]
+                        ingested_total += data.get("ingested_count", 0)
+                        all_items.extend(data.get("items", []))
+                        all_errors.extend(data.get("errors", []))
                     except Exception as e:
-                        st.error(f"❌ Error: {e}")
+                        all_errors.append({"filename": upload_file.name, "error": str(e)})
+
+                    elapsed = time.time() - started_at
+                    avg_per_file = elapsed / index
+                    remaining_sec = int(avg_per_file * (total_files - index))
+                    progress_bar.progress(
+                        index / total_files,
+                        text=(
+                            f"⏳ Processed {index}/{total_files} file(s)"
+                            f" | ~{remaining_sec}s remaining"
+                        ),
+                    )
+
+                status_box.empty()
+
+                error_count = len(all_errors)
+                st.success(
+                    f"✅ Ingested: {ingested_total} file(s)"
+                    + (f" | ❌ Errors: {error_count}" if error_count else "")
+                )
+                for err in all_errors:
+                    st.error(f"❌ {err['filename']}: {err['error']}")
+                if export_upload and all_items:
+                    st.session_state["upload_transcripts"] = [
+                        (item["title"], item.get("transcript", ""))
+                        for item in all_items
+                    ]
 
             for i, (title, transcript) in enumerate(st.session_state.get("upload_transcripts", [])):
                 st.download_button(
@@ -294,12 +310,18 @@ def main():
                             "question": prompt,
                             "top_k": top_k,
                             "similarity_threshold": similarity_threshold,
+                            "use_rewrite": use_rewrite,
+                            "source_title": (
+                                None if selected_source_file == "All files" else selected_source_file
+                            ),
                         },
                         timeout=60,
                         proxies=_NO_PROXY,
                     )
                     resp.raise_for_status()  # Raise error for bad status
                     result = resp.json()
+                    if result.get("rewrite_applied"):
+                        st.caption(f"🔁 Retrieval query: {result.get('retrieval_query', prompt)}")
                     # Display answer
                     st.markdown(result["answer"])
 
