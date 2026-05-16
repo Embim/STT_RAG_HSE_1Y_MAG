@@ -1,4 +1,7 @@
+import argparse
 import asyncio
+import hashlib
+from pathlib import Path
 from typing import Any, Dict, List
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -179,5 +182,40 @@ async def main():
     await ingest_json_to_vector_store(json_data)
 
 
+def _load_txt_dir(directory: Path) -> List[Dict[str, Any]]:
+    """Read every .txt under directory into the ingest dict shape."""
+    files = sorted(directory.rglob("*.txt"))
+    items: List[Dict[str, Any]] = []
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            continue
+        doc_hash = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:16]
+        items.append({
+            "hash": doc_hash,
+            "text": text,
+            "title": path.stem,
+            "source_file_name": path.name,
+        })
+    return items
+
+
+async def ingest_txt_dir(directory: Path) -> None:
+    items = _load_txt_dir(directory)
+    if not items:
+        logger.warning("No .txt files in %s", directory)
+        return
+    logger.info("Ingesting %d .txt files from %s", len(items), directory)
+    await ingest_json_to_vector_store(items)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(prog="downloader.ingest")
+    parser.add_argument("--from-dir", default=None,
+                        help="Ingest all .txt files under this directory; runs the demo data if omitted")
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if args.from_dir:
+        asyncio.run(ingest_txt_dir(Path(args.from_dir)))
+    else:
+        asyncio.run(main())

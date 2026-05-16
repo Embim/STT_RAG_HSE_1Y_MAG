@@ -78,17 +78,36 @@ async def check_vdb():
 
 @app.post("/ingest", tags=["Ingest"])
 async def ingest(req: IngestRequest):
-    logger.info("Ingest request: %s (keep_video=%s)", req.url, req.keep_video)
+    logger.info(
+        "Ingest request: %s (keep_video=%s, keep_audio=%s, export_txt=%s, export_json=%s)",
+        req.url, req.keep_video, req.keep_audio, req.export_txt, req.export_json,
+    )
     try:
-        return await process_youtube(req.url, req.keep_video, req.export_txt)
+        return await process_youtube(
+            url=req.url,
+            keep_video=req.keep_video,
+            export_txt=req.export_txt,
+            export_json=req.export_json,
+            keep_audio=req.keep_audio,
+        )
     except Exception as e:
         logger.error("Ingest failed for %s: %s", req.url, e)
         raise HTTPException(status_code=422, detail="не удалось обработать URL")
 
 
 @app.post("/ingest-upload", tags=["Ingest"])
-async def ingest_upload(files: List[UploadFile] = File(...), export_txt: bool = False):
-    return await process_uploaded_files(files, export_txt)
+async def ingest_upload(
+    files: List[UploadFile] = File(...),
+    export_txt: bool = False,
+    export_json: bool = False,
+    keep_audio: bool = False,
+):
+    return await process_uploaded_files(
+        files=files,
+        export_txt=export_txt,
+        export_json=export_json,
+        keep_audio=keep_audio,
+    )
 
 
 @app.post("/forward", tags=["Usage"])

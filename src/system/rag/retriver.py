@@ -65,7 +65,12 @@ async def retrieve(
     similarity_threshold: float,
     source_file_name: str | None = None,
     source_title: str | None = None,
-) -> str:
+) -> tuple[str, list]:
+    """Returns (formatted_context_string, list_of_documents).
+
+    The string goes into the LLM prompt; the document list is what RAGAS
+    needs (each doc.page_content is one retrieved context).
+    """
     pairs = await vector_store_manager.search(
         query,
         k=k,
@@ -81,4 +86,5 @@ async def retrieve(
         source_file_name,
         source_title,
     )
-    return _pack_results(_prepare_docs(pairs))
+    docs = _prepare_docs(pairs)
+    return _pack_results(docs), docs

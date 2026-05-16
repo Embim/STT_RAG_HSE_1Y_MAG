@@ -54,7 +54,12 @@ async def run(
                 "source_title": source_title,
             },
         )
-        context = await retrieve(
+        trace_id = None
+        try:
+            trace_id = langfuse.get_current_trace_id()
+        except AttributeError:
+            pass
+        context, retrieved_docs = await retrieve(
             vector_store_manager=vector_store_manager,
             query=retrieval_query,
             k=top_k,
@@ -71,10 +76,14 @@ async def run(
         return {
             "answer": answer,
             "context": context,
+            "retrieved_documents": [
+                {"text": d.page_content, "metadata": d.metadata} for d in retrieved_docs
+            ],
             "retrieval_query": retrieval_query,
             "rewrite_applied": use_rewrite and retrieval_query != question,
             "source_file_name": source_file_name,
             "source_title": source_title,
+            "trace_id": trace_id,
         }
 
     except PermissionDeniedError as e:

@@ -17,8 +17,8 @@ class VectorStoreManager:
     BATCH_SIZE = 100
     TOP_LOG_CANDIDATES = 3
 
-    def __init__(self):
-        self.collection_name = settings.WEAVIATE_COLLECTION_NAME
+    def __init__(self, collection_name: str | None = None):
+        self.collection_name = collection_name or settings.WEAVIATE_COLLECTION_NAME
         logger.info("Connecting to Weaviate at %s:%s", settings.WEAVIATE_HOST, settings.WEAVIATE_PORT)
         self.client = weaviate.connect_to_local(host=settings.WEAVIATE_HOST, port=settings.WEAVIATE_PORT)
         atexit.register(self.close)

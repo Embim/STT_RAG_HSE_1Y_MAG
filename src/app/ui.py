@@ -159,6 +159,8 @@ def main():
                 key="yt_url",
             )
             export_yt = st.checkbox("Export transcript as TXT", key="export_yt")
+            export_yt_json = st.checkbox("Export transcript as JSON (с сегментами)", key="export_yt_json")
+            keep_audio_yt = st.checkbox("Save extracted audio", key="keep_audio_yt")
             keep_video_yt = st.checkbox("Download & keep full video", key="keep_video_yt")
 
             if st.button("Load", use_container_width=True, disabled=not yt_url, key="btn_yt"):
@@ -166,7 +168,13 @@ def main():
                     try:
                         resp = requests.post(
                             "http://localhost:8001/ingest",
-                            json={"url": yt_url, "export_txt": export_yt, "keep_video": keep_video_yt},
+                            json={
+                                "url": yt_url,
+                                "export_txt": export_yt,
+                                "export_json": export_yt_json,
+                                "keep_audio": keep_audio_yt,
+                                "keep_video": keep_video_yt,
+                            },
                             timeout=3600,
                             proxies=_NO_PROXY,
                         )
@@ -204,6 +212,8 @@ def main():
                 key="uploader",
             )
             export_upload = st.checkbox("Export transcripts as TXT", key="export_upload")
+            export_upload_json = st.checkbox("Export transcripts as JSON (с сегментами)", key="export_upload_json")
+            keep_audio_upload = st.checkbox("Save extracted audio", key="keep_audio_upload")
 
             if st.button(
                 "Transcribe & Ingest",
@@ -226,8 +236,14 @@ def main():
                         files_payload = [
                             ("files", (upload_file.name, upload_file.getvalue(), "application/octet-stream"))
                         ]
+                        params = {
+                            "export_txt": "true" if export_upload else "false",
+                            "export_json": "true" if export_upload_json else "false",
+                            "keep_audio": "true" if keep_audio_upload else "false",
+                        }
                         resp = requests.post(
-                            f"http://localhost:8001/ingest-upload?export_txt={'true' if export_upload else 'false'}",
+                            "http://localhost:8001/ingest-upload",
+                            params=params,
                             files=files_payload,
                             timeout=3600,
                             proxies=_NO_PROXY,
