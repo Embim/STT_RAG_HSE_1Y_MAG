@@ -200,7 +200,12 @@ class _HardwareSidecar(threading.Thread):
         self._client = client
         self._run_id = run_id
         self._interval = interval
-        self._stop = threading.Event()
+        # ВАЖНО: имя `self._stop` зарезервировано в `threading.Thread` как
+        # внутренний метод shutdown'а. Если перетереть его своим `Event`,
+        # то `Thread.join()` упадёт с `TypeError: 'Event' object is not callable`
+        # потому что внутри Thread.join → _wait_for_tstate_lock → self._stop().
+        # Поэтому держим signal под именем `_stop_event`.
+        self._stop_event = threading.Event()
         self._psutil = _import_psutil()
         self._pynvml = _import_pynvml()
         self._gpu_handles = []
@@ -215,18 +220,18 @@ class _HardwareSidecar(threading.Thread):
                 self._pynvml = None
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
 
     def run(self) -> None:
         step = 0
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             ts = int(time.time() * 1000)
             try:
                 self._sample(ts, step)
             except Exception as e:
                 logger.debug("hw sidecar sample failed: %s", e)
             step += 1
-            self._stop.wait(self._interval)
+            self._stop_event.wait(self._interval)
 
     def _sample(self, ts: int, step: int) -> None:
         from mlflow.entities import Metric  # local import — only needed when active
@@ -323,8 +328,15 @@ def video_run(
         sidecar.start()
         yield active
     finally:
-        sidecar.stop()
-        sidecar.join(timeout=2.0)
+        # Сначала останавливаем сайдкар; обоборачиваем join() в try/except
+        # на случай если внутри Thread что-то падает — это НЕ должно мешать
+        # вызову mlflow.end_run() ниже, иначе следующий start_run будет
+        # ругаться "Run is already active".
+        try:
+            sidecar.stop()
+            sidecar.join(timeout=2.0)
+        except Exception as e:
+            logger.warning("sidecar.join failed (non-fatal): %s", e)
         try:
             mlflow.end_run()
         except Exception as e:
