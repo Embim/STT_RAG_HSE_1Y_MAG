@@ -1,0 +1,22 @@
+# Streamlit server config — действует для всех `streamlit run ...` из этого
+# проекта (Streamlit автоматически подхватывает .streamlit/config.toml из CWD
+# и из ~/.streamlit/).
+#
+# Зачем поднимали лимиты: UI грузит лекционные mp4 (часто 1-3 GB на 90 мин).
+# Дефолты Streamlit (200 MB) на этом ломаются с ошибкой "file too large".
+
+[server]
+# Максимальный размер одного загружаемого файла, в мегабайтах.
+# 5000 MB = 5 GB — хватает на 2-3 часа видео в 1080p.
+maxUploadSize = 5000
+
+# Максимальный размер WebSocket-сообщения. ДОЛЖНО быть >= maxUploadSize,
+# иначе файл доедет до сервера обрезанным. Тоже в мегабайтах.
+maxMessageSize = 5000
+
+# Не открывать браузер автоматически (раздражает при auto-reload в dev).
+headless = true
+
+[browser]
+# В логи и в копи-paste не подставлять telemetry-теги.
+gatherUsageStats = false

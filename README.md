@@ -26,49 +26,54 @@
 - Асинхронная архитектура
 
 ⚠️ **Временные костыли:**
-- ChromaDB вместо нормальной векторки
 - Только семантический поиск (гибридный в TODO)
-- Простая структура данных (text + hash)
 - Логирование минимальное
 
 🚧 **В разработке:**
-- YouTube downloader
-- Whisper транскрибация
-- Таймкоды и привязка к видео
-- Нормальная БД (Weaviate/Qdrant)
+- Расширение ASR/RAG eval (см. [src/evaluation/README.md](src/evaluation/README.md))
+
+---
+
+## Где живут эксперименты и raw данные
+
+Этот репо — **только код + финальный (v15) judge-промпт + финальный
+sweep**. Всё что exploratory — 15 версий промпта, 56 директорий
+отчётов, 91 CSV/JSONL прогона, 1 GB локальных ASR-бенчмарков, 2.4 GB
+исходного audio/video, анонимизированные записи друзей — лежит в
+**сестринском репо** [`../STT_RAG_HSE_1Y_MAG_DATA`](../STT_RAG_HSE_1Y_MAG_DATA/).
+
+Главное чтиво из архива — [`docs/judge_evolution.md`](../STT_RAG_HSE_1Y_MAG_DATA/docs/judge_evolution.md):
+narrative эволюции judge-промпта v1→v15 с 5 ключевыми уроками
+(server-side fix > prompt engineering, ловушки strict json_schema
+с reasoning, и т.п.).
 
 ---
 
 ## Быстрый старт
 
 ### 1. Установка зависимостей
+
+Проект полностью на `uv` — он сам создаёт `.venv/`, тянет нужную версию Python (>=3.12) и ставит зависимости из `pyproject.toml`/`uv.lock`. Команды одинаковые на Linux/macOS и на Windows.
+
 ```bash
 # Клонируем репо
-git clone 
+git clone <repo-url>
 cd STT_RAG_HSE_1Y_MAG
 
-# 1.2. Установить uv (если не установлен)
+# Установить uv (если ещё не стоит)
+# Linux / macOS:
 curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows (PowerShell):
+#   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-# 1.3. Создать окружение и установить зависимости
+# Создать окружение и поставить зависимости
 uv sync
 
-# 1.4. Активировать окружение
-source .venv/bin/activate
+# Опционально: eval-харнес (ragas, jiwer, datasets, langchain-openai, ...)
+uv sync --extra eval
 ```
 
-**Windows (PowerShell):**
-```powershell
-# 1.2. Установить uv
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-# После установки перезапустите терминал, чтобы uv появился в PATH
-
-# 1.3. Создать окружение и установить зависимости
-uv sync
-
-# 1.4. Активировать окружение
-.venv\Scripts\activate
-```
+Активировать окружение явно обычно не нужно — все команды ниже запускай через `uv run <команда>`. Если всё-таки хочется shell с активированным venv: `source .venv/bin/activate` (Linux/macOS) или `.venv\Scripts\activate` (Windows).
 
 ### 2. Настройка окружения
 
@@ -99,26 +104,26 @@ curl http://localhost:7997/v1/embeddings \
 ### 4. Тестируем RAG - смотрим что модель отвечает (секунд 7)
 ```bash
 cd src
-
-python -m test
+uv run python -m test
 ```
 
 ### 6. Поднимаем FastAPI - (можно проверить ручки)
 ```bash
-python -m uvicorn api.main:src/app --host 0.0.0.0 --port 8001
+uv run uvicorn api.main:app --host 0.0.0.0 --port 8001
 ```
 
 ### 7. Запускаем ui - streamlit на локал хосте
 ```bash
-streamlit run app/ui.py
- ```
+uv run streamlit run app/ui.py
+```
 
 ### 8. Загружаем данные в векторную БД
 ```bash
-python -m downloader.ingest
+uv run python -m downloader.ingest                              # пример из main()
+uv run python -m downloader.ingest --from-dir data/transcripts/recsys   # любая папка с .txt
 ```
 
-Это запустит пример загрузки. Для своих данных отредактируй `src/downloader/ingest.py`:
+Без флагов запустится пример из `main()`. Для произвольной папки с `.txt` используй `--from-dir <path>`. Для произвольной структуры данных можно отредактировать `src/downloader/ingest.py`:
 ```python
 json_data = [
     {
@@ -127,43 +132,64 @@ json_data = [
     }
 ]
 ```
+
+### 9. Eval (опционально)
+
+Подробности про оценку качества ASR и RAG — в [src/evaluation/README.md](src/evaluation/README.md). Кратко:
+```bash
+uv sync --extra eval
+uv run python -m evaluation.asr.runner --max-samples 50 --langfuse-dataset asr-cv-ru
+uv run python -m evaluation.rag.runner --testset data/eval/testsets/recsys_v1.json \
+    --run-name baseline --langfuse-dataset stt-rag-recsys-v1
+```
+
 ---
 
 ## Архитектура проекта
 ```
 src/
 ├── app/
-│   └── ui.py              # Streamlit интерфейс (WIP)
+│   └── ui.py                # Streamlit интерфейс
+├── api/
+│   └── main.py              # FastAPI endpoints
 ├── downloader/
-│   └── ingest.py          # Загрузка данных в векторную БД
+│   ├── ingest.py            # Загрузка данных в Weaviate (--from-dir для папки .txt)
+│   ├── transcriber.py       # Тонкий shim над HttpASRBackend
+│   └── processor.py         # YouTube/upload → транскрибация → ингест
 ├── system/
 │   ├── llm/
-│   │   └── llm_services.py   # Клиент OpenRouter
-│   └── rag/
-│       ├── pipeline.py       # Главный RAG pipeline
-│       ├── embedder.py       # Локальный эмбеддер (Infinity)
-│       ├── retriver.py       # Поиск по векторной БД
-│       ├── answer.py         # Генерация ответов
-│       ├── question_rewriter.py  # Переформулировка вопросов
-│       └── vectore_store.py  # Менеджер векторной БД
-├── prompts.py             # Системные промпты
-├── settings.py            # Конфиг из .env
-└── test.py               # Быстрый тест
+│   │   └── llm_services.py  # OpenRouter клиент + Langfuse generation
+│   ├── rag/
+│   │   ├── pipeline.py      # Главный RAG pipeline (rewrite→retrieve→answer)
+│   │   ├── embedder.py      # Локальный эмбеддер (Infinity, FRIDA)
+│   │   ├── retriver.py      # Поиск в Weaviate (возвращает текст + Document'ы)
+│   │   ├── answer.py        # Генерация ответа
+│   │   ├── question_rewriter.py  # Переформулировка вопроса
+│   │   └── vectore_store.py # Менеджер Weaviate (поддержка кастомных коллекций)
+│   ├── prompts.py           # Системные промпты
+│   ├── tracing.py           # Langfuse @observe + noop-fallback
+│   └── exceptions.py
+├── evaluation/              # ASR + RAG eval-харнес (см. свой README)
+│   ├── asr/                 # WER/CER, бенчмарки, runner
+│   ├── rag/                 # RAGAS метрики, тестсеты, runner
+│   └── reporting/           # CSV + Langfuse Datasets/Scores
+├── data/
+│   └── eval/                # Только финальный v15 sweep (CSV/JSONL/HTML).
+│                            # Старые версии (v1-v14), бенчмарки, raw audio/video,
+│                            # все 56 outputs и 91 results — в archive репо
+│                            # `STT_RAG_HSE_1Y_MAG_DATA` (sister directory).
+├── settings.py              # Конфиг из .env
+└── test.py                  # Быстрый тест RAG
 
-data/
-├── transcripts/          # Транскрибированные тексты
-├── vectore_store/        # ChromaDB данные
-└── infinity_data/        # Кэш эмбеддинг модели
+scripts/
+└── build_asr_benchmark.py   # Сборка локального ASR-бенчмарка (one-off)
 
-docker-compose.yaml       # Infinity контейнер
-requirements.txt          # Python зависимости
+docker-compose.yml           # Weaviate + Infinity + faster-whisper + Langfuse
+pyproject.toml               # Зависимости (uv)
 ```
 
 ## TO-DO
-- настроить so и stream режим
-- переехать на milvus контейнер
-- подключить трассировку через langfuse
-- собрать датасет и ввыбрать домен
-- выбрать метрики и оценить качество через эксперимент в langfuse
-- улучшить поиск (сохранять версии и метрики)
-- добавить логи 
+- гибридный поиск (BM25 + dense)
+- больше ASR-моделей в eval (Qwen3-ASR FastAPI-обёртка)
+- расширить тестсет за пределы 3 RecSys-лекций
+- логирование как у взрослых 

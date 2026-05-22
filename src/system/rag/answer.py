@@ -2,11 +2,10 @@ import logging
 from typing import Dict, Iterable, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
-from langfuse import get_client
 
 from system.llm.llm_services import LLM_GENERATE_ANSWER
 from system.prompts import ANSWER_SYSTEM_PROMPT, FINAL_ANSWER_CONTEXT_SYSTEM
-from system.tracing import observe
+from system.tracing import get_client, observe
 from settings import settings
 
 logger = logging.getLogger(__name__)

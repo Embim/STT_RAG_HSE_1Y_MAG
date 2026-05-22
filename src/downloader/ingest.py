@@ -1,5 +1,8 @@
+import argparse
 import asyncio
-from typing import List, Dict
+import hashlib
+from pathlib import Path
+from typing import Any, Dict, List
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
@@ -9,33 +12,108 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def create_documents_from_json(data: Dict[str, str]) -> List[Document]:
-    """Разбивает текст на чанки и создает документы."""
-    
+def _create_documents_from_text(data: Dict[str, Any]) -> List[Document]:
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.CHUNK_SIZE,
         chunk_overlap=settings.CHUNK_OVERLAP,
         separators=["\n\n", "\n", ". ", " ", ""]
     )
-    
+
     chunks = text_splitter.split_text(data["text"])
-    
+
     documents = [
         Document(
             page_content=chunk,
             metadata={
                 "hash": data["hash"],
                 "chunk_index": i,
-                "total_chunks": len(chunks)
+                "total_chunks": len(chunks),
+                "title": data.get("title"),
+                "source_url": data.get("source_url"),
+                "source_file_name": data.get("source_file_name"),
             }
         )
         for i, chunk in enumerate(chunks)
     ]
-    
+
     return documents
 
 
-async def ingest_json_to_vector_store(data_list: List[Dict[str, str]]):
+def _create_documents_from_segments(data: Dict[str, Any]) -> List[Document]:
+    segments = data.get("segments", [])
+    if not segments:
+        return _create_documents_from_text(data)
+
+    chunks: List[Dict[str, Any]] = []
+    current_text_parts: List[str] = []
+    current_start: float | None = None
+    current_end: float | None = None
+    current_size = 0
+
+    for segment in segments:
+        segment_text = str(segment.get("text", "")).strip()
+        if not segment_text:
+            continue
+        segment_start = float(segment.get("start", 0.0) or 0.0)
+        segment_end = float(segment.get("end", segment_start) or segment_start)
+
+        next_size = current_size + len(segment_text) + (1 if current_text_parts else 0)
+        if current_text_parts and next_size > settings.CHUNK_SIZE:
+            chunks.append(
+                {
+                    "text": " ".join(current_text_parts),
+                    "start_sec": current_start,
+                    "end_sec": current_end,
+                }
+            )
+            current_text_parts = [segment_text]
+            current_start = segment_start
+            current_end = segment_end
+            current_size = len(segment_text)
+            continue
+
+        if not current_text_parts:
+            current_start = segment_start
+        current_text_parts.append(segment_text)
+        current_end = segment_end
+        current_size = next_size
+
+    if current_text_parts:
+        chunks.append(
+            {
+                "text": " ".join(current_text_parts),
+                "start_sec": current_start,
+                "end_sec": current_end,
+            }
+        )
+
+    documents = [
+        Document(
+            page_content=chunk["text"],
+            metadata={
+                "hash": data["hash"],
+                "chunk_index": idx,
+                "total_chunks": len(chunks),
+                "start_sec": chunk["start_sec"],
+                "end_sec": chunk["end_sec"],
+                "title": data.get("title"),
+                "source_url": data.get("source_url"),
+                "source_file_name": data.get("source_file_name"),
+            },
+        )
+        for idx, chunk in enumerate(chunks)
+    ]
+    return documents
+
+
+def create_documents_from_json(data: Dict[str, Any]) -> List[Document]:
+    """Создает документы для ingest; при наличии segments сохраняет таймстемпы."""
+    if data.get("segments"):
+        return _create_documents_from_segments(data)
+    return _create_documents_from_text(data)
+
+
+async def ingest_json_to_vector_store(data_list: List[Dict[str, Any]]):
     """Загружает JSON данные в векторную БД."""
     
     all_docs: List[Document] = []
@@ -104,5 +182,40 @@ async def main():
     await ingest_json_to_vector_store(json_data)
 
 
+def _load_txt_dir(directory: Path) -> List[Dict[str, Any]]:
+    """Read every .txt under directory into the ingest dict shape."""
+    files = sorted(directory.rglob("*.txt"))
+    items: List[Dict[str, Any]] = []
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            continue
+        doc_hash = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:16]
+        items.append({
+            "hash": doc_hash,
+            "text": text,
+            "title": path.stem,
+            "source_file_name": path.name,
+        })
+    return items
+
+
+async def ingest_txt_dir(directory: Path) -> None:
+    items = _load_txt_dir(directory)
+    if not items:
+        logger.warning("No .txt files in %s", directory)
+        return
+    logger.info("Ingesting %d .txt files from %s", len(items), directory)
+    await ingest_json_to_vector_store(items)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(prog="downloader.ingest")
+    parser.add_argument("--from-dir", default=None,
+                        help="Ingest all .txt files under this directory; runs the demo data if omitted")
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if args.from_dir:
+        asyncio.run(ingest_txt_dir(Path(args.from_dir)))
+    else:
+        asyncio.run(main())

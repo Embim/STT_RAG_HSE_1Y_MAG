@@ -1,0 +1,38 @@
+# Prometheus scrape config for the STT_RAG project.
+#
+# Scrapes:
+#   - prometheus itself (sanity check)
+#   - dcgm-exporter for GPU (utilization, temperature, memory)
+#   - node-exporter for host CPU/RAM/disk/network
+#   - cadvisor for per-container CPU/memory/IO
+#   - langfuse-web /metrics endpoint (it serves Prometheus format natively)
+#
+# All targets are reached via Docker DNS on the rag-net network.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: stt-rag
+    env: dev
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: dcgm
+    static_configs:
+      - targets: ["dcgm-exporter:9400"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: langfuse-web
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["langfuse-web:3000"]

@@ -78,23 +78,59 @@ async def check_vdb():
 
 @app.post("/ingest", tags=["Ingest"])
 async def ingest(req: IngestRequest):
-    logger.info("Ingest request: %s (keep_video=%s)", req.url, req.keep_video)
+    logger.info(
+        "Ingest request: %s (keep_video=%s, keep_audio=%s, export_txt=%s, export_json=%s)",
+        req.url, req.keep_video, req.keep_audio, req.export_txt, req.export_json,
+    )
     try:
-        return await process_youtube(req.url, req.keep_video, req.export_txt)
+        return await process_youtube(
+            url=req.url,
+            keep_video=req.keep_video,
+            export_txt=req.export_txt,
+            export_json=req.export_json,
+            keep_audio=req.keep_audio,
+        )
     except Exception as e:
         logger.error("Ingest failed for %s: %s", req.url, e)
         raise HTTPException(status_code=422, detail="не удалось обработать URL")
 
 
 @app.post("/ingest-upload", tags=["Ingest"])
-async def ingest_upload(files: List[UploadFile] = File(...), export_txt: bool = False):
-    return await process_uploaded_files(files, export_txt)
+async def ingest_upload(
+    files: List[UploadFile] = File(...),
+    export_txt: bool = False,
+    export_json: bool = False,
+    keep_audio: bool = False,
+):
+    return await process_uploaded_files(
+        files=files,
+        export_txt=export_txt,
+        export_json=export_json,
+        keep_audio=keep_audio,
+    )
 
 
 @app.post("/forward", tags=["Usage"])
 async def forward(req: ForwardRequest):
     try:
-        return await run(question=req.question, top_k=req.top_k, similarity_threshold=req.similarity_threshold)
+        return await run(
+            question=req.question,
+            top_k=req.top_k,
+            similarity_threshold=req.similarity_threshold,
+            use_rewrite=req.use_rewrite,
+            source_file_name=req.source_file_name,
+            source_title=req.source_title,
+        )
     except Exception as e:
         logger.exception("Error in /forward: %s", e)
         raise HTTPException(status_code=403, detail="модель не смогла обработать данные")
+
+
+@app.get("/source-files", tags=["Usage"])
+async def source_files():
+    try:
+        files = CHAT_VECTORE_STORE_MANAGER.list_source_titles()
+        return {"files": files}
+    except Exception as e:
+        logger.exception("Error in /source-files: %s", e)
+        raise HTTPException(status_code=500, detail="не удалось получить список файлов")

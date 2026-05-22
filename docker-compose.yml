@@ -4,6 +4,15 @@ x-shared-logs: &shared-logs
     options:
       max-size: "100k"
 
+# Health-check для ASR-бэкендов: пинг OpenAI-compatible /v1/models.
+# Используем python (urllib) — гарантированно есть в каждом из этих образов
+# (vllm, qwenllm, faster-whisper-server, nemo), в отличие от curl/wget.
+# start_period каждый сервис задаёт сам — vLLM-большие модели грузятся
+# 2-4 минуты, лёгкие — 30-60 сек.
+x-asr-healthcheck-test: &asr-healthcheck-test
+  - CMD-SHELL
+  - "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/v1/models\", timeout=5)' 2>/dev/null || python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/v1/models\", timeout=5)'"
+
 networks:
   rag-net:
     driver: bridge
@@ -70,19 +79,43 @@ services:
       - weaviate-data:/var/lib/weaviate
     <<: *shared-logs
 
+  # ────────────────────────────────────────────────────────────────────
+  # ASR backends — все на одном порту 8000 с сетевым алиасом `asr`.
+  # Запускаются эксклюзивно: один профиль = один backend на GPU.
+  #
+  #   asr-whisper       — faster-whisper-large-v3-turbo (~2 GB)
+  #   asr-qwen3         — Qwen/Qwen3-ASR-1.7B, native ru+en code-switch (~4 GB)
+  #   asr-parakeet      — nvidia/parakeet-tdt-0.6b-v3, ru-baseline без CS (~2 GB)
+  #   asr-phi4-nvfp4    — nvidia/Phi-4-multimodal-instruct-NVFP4, FP4 (~4 GB)
+  #   asr-vibevoice     — microsoft/VibeVoice-ASR-HF через transformers + bnb 4-bit
+  #                       (~5-6 GB), CS + diarization + hotwords (60-мин audio)
+  #
+  # Убраны (см. docs/asr_backends.md, секция «Что НЕ попало в стек»):
+  #   - asr-canary-qwen — NeMo баг с кэшем + медленный HF из РФ
+  #   - asr-voxtral-*   — Voxtral 2507 не поддерживает русский
+  #
+  # Переключение:
+  #   docker compose --profile asr-whisper down
+  #   docker compose --profile asr-qwen3 up -d
+  #
+  # Runtime код звонит на http://asr:8000/v1/audio/transcriptions
+  # (OpenAI-compatible). У всех контейнеров одинаковый network alias `asr`.
+  # ────────────────────────────────────────────────────────────────────
+
   whisper:
     image: fedirz/faster-whisper-server:latest-cuda
-    container_name: whisper
+    container_name: asr-whisper
     restart: unless-stopped
     networks:
-      - rag-net
+      rag-net:
+        aliases: [asr]
     ports:
       - "8000:8000"
     profiles:
-      - asr
+      - asr-whisper
       - full
     environment:
-      - FASTER_WHISPER_SERVER_PORT=9000
+      - FASTER_WHISPER_SERVER_PORT=8000
       - WHISPER__MODEL=deepdml/faster-whisper-large-v3-turbo-ct2
       - WHISPER__LANGUAGE=ru
       - WHISPER__INFERENCE_DEVICE=cuda
@@ -90,14 +123,319 @@ services:
       - WHISPER__BEAM_SIZE=5
       - WHISPER__BATCH_SIZE=16
       - HOST=0.0.0.0
-      - PORT=9000
+      - PORT=8000
       - HF_HOME=/root/.cache/huggingface
       - NVIDIA_VISIBLE_DEVICES=1
     volumes:
       - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache/huggingface
     runtime: nvidia
+    healthcheck:
+      test: *asr-healthcheck-test
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     <<: *shared-logs
 
+  asr-qwen3:
+    # Qwen3-ASR-1.7B через vLLM. Официальный образ `qwenllm/qwen3-asr` не имеет
+    # автозапуска сервера (его entrypoint — bash shell), поэтому используем vLLM
+    # как для других LLM-decoder ASR. Apache-2.0, non-gated.
+    #
+    # ВАЖНО: vLLM/vllm-openai:latest НЕ содержит PyAV (`av`), soundfile, librosa,
+    # а transcription-эндпойнт их требует. Без них:
+    #   - PyAV отсутствует → 400 "Invalid or unsupported audio file"
+    #   - soundfile отсутствует → запрос ЗАВИСАЕТ (vLLM логирует ImportError
+    #     внутри audio loader, но не возвращает ошибку клиенту, request
+    #     остаётся в Running состоянии бесконечно).
+    # Ставим все аудио-deps инлайном перед startup.
+    image: vllm/vllm-openai:latest
+    container_name: asr-qwen3
+    restart: unless-stopped
+    networks:
+      rag-net:
+        aliases: [asr]
+    ports:
+      - "8000:8000"
+    profiles:
+      - asr-qwen3
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_VISIBLE_DEVICES=1
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+    volumes:
+      - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache/huggingface
+    runtime: nvidia
+    ipc: host
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        pip install --quiet av soundfile librosa && \
+        exec vllm serve \
+          --model Qwen/Qwen3-ASR-1.7B \
+          --trust-remote-code \
+          --port 8000 \
+          --host 0.0.0.0 \
+          --gpu-memory-utilization 0.85 \
+          --max-model-len 8192 \
+          --enforce-eager
+    healthcheck:
+      test: *asr-healthcheck-test
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 600s
+    <<: *shared-logs
+
+  asr-vibevoice:
+    # microsoft/VibeVoice-ASR-HF через transformers (НЕ vLLM). Причины:
+    #   - microsoft/VibeVoice-ASR + vLLM plugin: хардкодит BF16 → 18 GB OOM на 5080
+    #   - scerz/VibeVoice-ASR-4bit + plugin: HF архитектура не зарегистрирована
+    #     в плагине (`VibeVoiceASRForConditionalGeneration` not in supported list)
+    #   - microsoft/VibeVoice-ASR-HF + plain vLLM: AttributeError на
+    #     _get_num_multimodal_tokens (vLLM v1 несовместимость с VibeVoice processor)
+    #
+    # Поэтому идём через transformers ≥ 5.3.0 (поддерживает VibeVoice нативно)
+    # + bitsandbytes 4-bit on-the-fly. Получаем ~5-6 GB после квантизации.
+    # Hotwords мапим в OpenAI-API `prompt` поле — для подачи domain-glossary.
+    image: nvcr.io/nvidia/pytorch:25.11-py3
+    container_name: asr-vibevoice
+    restart: unless-stopped
+    networks:
+      rag-net:
+        aliases: [asr]
+    ports:
+      - "8000:8000"
+    profiles:
+      - asr-vibevoice
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_VISIBLE_DEVICES=1
+      - HF_MODEL=microsoft/VibeVoice-ASR-HF
+      - VIBEVOICE_QUANT=bnb4
+      - ASR_PORT=8000
+    volumes:
+      - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache/huggingface
+      - ./asr_servers/vibevoice_server.py:/workspace/server.py:ro
+    runtime: nvidia
+    ipc: host
+    command:
+      - bash
+      - -c
+      - "pip install --quiet 'transformers>=5.3.0' bitsandbytes accelerate soundfile librosa fastapi uvicorn python-multipart && python /workspace/server.py"
+    healthcheck:
+      test: *asr-healthcheck-test
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 1800s
+    <<: *shared-logs
+
+  asr-parakeet:
+    # NVIDIA Parakeet-TDT-0.6B-v3: 25 европейских языков, в том числе русский,
+    # 600M параметров (~2 GB VRAM), non-gated, CC-BY-4.0. Auto language detection,
+    # НЕ умеет code-switching (язык фиксируется на utterance level) — поэтому
+    # годится как чистый русско-язычный baseline для сравнения с CS-моделями,
+    # а не основной backend для лекций с англицизмами.
+    image: nvcr.io/nvidia/nemo:26.02
+    container_name: asr-parakeet
+    restart: unless-stopped
+    networks:
+      rag-net:
+        aliases: [asr]
+    ports:
+      - "8000:8000"
+    profiles:
+      - asr-parakeet
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NEMO_MODEL=nvidia/parakeet-tdt-0.6b-v3
+      - ASR_PORT=8000
+    volumes:
+      - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache/huggingface
+      - ./asr_servers/parakeet_server.py:/workspace/server.py:ro
+    runtime: nvidia
+    ipc: host
+    command:
+      - bash
+      - -c
+      - "pip install --quiet fastapi uvicorn python-multipart && python /workspace/server.py"
+    healthcheck:
+      test: *asr-healthcheck-test
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 600s
+    <<: *shared-logs
+
+
+  asr-phi4-nvfp4:
+    # nvidia/Phi-4-multimodal-instruct-NVFP4 — официальная NVFP4-квантизация
+    # Microsoft Phi-4-MM (5.6B параметров, ~3-4 GB в FP4 на Blackwell).
+    # Non-gated, лицензия nvidia-open-model-license + MIT. Multimodal LLM —
+    # можно подать system-prompt с глоссарием терминов лекций.
+    #
+    # ВАЖНО: работает через TensorRT-LLM, не vLLM. Команда `trtllm-serve`
+    # стартует OpenAI-compatible HTTP-сервер. Blackwell (RTX 5080) поддерживает
+    # FP4 нативно через tensor cores.
+    image: nvcr.io/nvidia/tensorrt-llm/release:1.2.0rc6
+    container_name: asr-phi4-nvfp4
+    restart: unless-stopped
+    networks:
+      rag-net:
+        aliases: [asr]
+    ports:
+      - "8000:8000"
+    profiles:
+      - asr-phi4-nvfp4
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_VISIBLE_DEVICES=1
+    volumes:
+      - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache/huggingface
+    runtime: nvidia
+    ipc: host
+    command:
+      - trtllm-serve
+      - nvidia/Phi-4-multimodal-instruct-NVFP4
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --trust_remote_code
+      - --max_seq_len
+      - "8192"
+      - --kv_cache_free_gpu_memory_fraction
+      - "0.5"
+    healthcheck:
+      test: *asr-healthcheck-test
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 900s
+    <<: *shared-logs
+
+
+  # ────────────────────────────────────────────────────────────────────
+  # ASR JUDGE: Qwen3.5-9B GGUF Q4 как LLM-судья
+  # Profile: asr-judge
+  # Port: 8002 (не пересекается с ASR-backends на 8000)
+  # Network alias: judge
+  #
+  # Почему llama.cpp а не vLLM:
+  #   GGUF — родной формат llama.cpp. vLLM умеет GGUF только experimental'но
+  #   (медленно, нестабильно). llama-server даёт честный OpenAI-compat
+  #   /v1/chat/completions + флаги под reasoning. На Blackwell (RTX 5080)
+  #   с CUDA-сборкой производительность сравнима с vLLM для 9B модели.
+  #
+  # Q4_K_M квант Qwen3.5-9B весит ~5.5 GB → влезает в 16 GB c запасом
+  # на KV-cache (16K context ≈ 2-3 GB).
+  #
+  # Reasoning:
+  #   --reasoning-format deepseek заставляет server распарсить
+  #   `<think>...</think>` в отдельное поле reasoning_content
+  #   в /v1/chat/completions response. Наш JudgeClient уже это читает.
+  #
+  # --jinja нужен чтобы llama-server использовал chat_template из
+  # tokenizer_config.json модели (для Qwen3.5 thinking — критично).
+  #
+  # HF download: --hf-repo + --hf-file тянут GGUF из HuggingFace при
+  # первом старте. Кеш в /root/.cache/llama.cpp (внутри общего hf_cache).
+  # Cold start первого запуска: ~3-5 мин (5.5 GB на скачивание).
+  #
+  # Override через env:
+  #   JUDGE_MODEL_REPO  — другой HF-репозиторий
+  #   JUDGE_MODEL_FILE  — другой quant (Q5_K_M, Q8_0, и т.д.)
+  # ────────────────────────────────────────────────────────────────────
+
+  asr-judge:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: asr-judge
+    restart: unless-stopped
+    networks:
+      rag-net:
+        aliases: [judge]
+    ports:
+      - "8002:8000"
+    profiles:
+      - asr-judge
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+      - LLAMA_CACHE=/root/.cache/llama.cpp
+    volumes:
+      # Тот же кеш-том что и ASR (общий ./hf_cache), но llama.cpp пишет в
+      # свою подпапку — конфликта с HuggingFace cache не будет.
+      - ${HUGGINGFACE_CACHE:-./hf_cache}:/root/.cache
+    runtime: nvidia
+    ipc: host
+    # VRAM-бюджет на RTX 5080 (16 GB), Q4_K_M 9B с KV q8_0:
+    #   веса                     ~5.5 GB
+    #   KV @ ctx=32768, q8_0     ~520 MB (вместо ~1 GB в f16: q8_0 сжимает 2×)
+    #   overhead/compute         ~1.5 GB
+    #   ───────────────────────  ~7.5 GB → остаётся ~8.5 GB headroom
+    # Окно 32K через q8_0-квантованный KV cache: судья пишет длинный reasoning
+    # (до 20K токенов) без обрезок. q8_0 — лучший компромисс качества/памяти
+    # (q4_0 экономит ещё 2×, но даёт заметную деградацию на длинных reasoning).
+    # Для квантованного KV ОБЯЗАТЕЛЬНО включён --flash-attn on (без FA llama.cpp
+    # квантованный KV не поддерживает с performant ядрами).
+    #
+    # -ngl 99   = offload ВСЕХ слоёв на GPU
+    # --ctx-size 32768 = 32K окно
+    # --cache-type-k / --cache-type-v q8_0 = квантование KV cache
+    # --flash-attn on = FlashAttention (на Blackwell даёт ~30-50%).
+    #             ВАЖНО: с осени 2025 в llama.cpp флаг стал value-аргументом
+    #             (on|off|auto). Без явного "on" парсер схватит следующий
+    #             аргумент как значение и упадёт с "unknown value for
+    #             --flash-attn: '--reasoning-format'".
+    # --alias   = под каким именем сервер репортит модель в /v1/models;
+    #             должен совпадать с settings.JUDGE_MODEL_ID
+    command:
+      - --hf-repo
+      - ${JUDGE_MODEL_REPO:-unsloth/Qwen3.5-9B-GGUF}
+      - --hf-file
+      - ${JUDGE_MODEL_FILE:-Qwen3.5-9B-Q4_K_M.gguf}
+      - --alias
+      - ${JUDGE_MODEL_ID:-qwen3.5-9b-q4}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - -ngl
+      - "99"
+      - --ctx-size
+      - "32768"
+      - --flash-attn
+      - "on"
+      - --cache-type-k
+      - q8_0
+      - --cache-type-v
+      - q8_0
+      - --reasoning-format
+      - deepseek
+      - --jinja
+      # --reasoning-budget — hard cap на число reasoning tokens. После
+      # достижения сервер автоматически вставляет `</think>` и форсирует
+      # выход в content/JSON. Решает известный баг Qwen3.5 с infinite
+      # reasoning loops (QwenLM/Qwen3.6#145) без правок промпта.
+      # 4000 = достаточно для нашей задачи (median reasoning в v12 был
+      # 5500-6200, но 4000 хватает на 5-8 кандидатов с фильтрацией).
+      - --reasoning-budget
+      - "4000"
+    # Healthcheck НЕ использует общий *asr-healthcheck-test (python3-based),
+    # потому что в образе ghcr.io/ggml-org/llama.cpp:server-cuda нет python.
+    # Любой `python -c ...` вылетает с exit 127 (command not found), и
+    # Docker мгновенно проставляет unhealthy, минуя start_period. TCP-чек
+    # через bash builtin /dev/tcp работает на любом debian-based образе.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # Первый старт качает 5.5 GB GGUF. На медленном канале может занять
+      # 5+ минут — ставим запас.
+      start_period: 600s
+    <<: *shared-logs
 
   langfuse-postgres:
     image: postgres:16-alpine
@@ -272,8 +610,349 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
     <<: *shared-logs
 
+  # ────────────────────────────────────────────────────────────────────
+  # Airflow stack: LocalExecutor + Postgres
+  # Profiles: airflow
+  # UI: http://localhost:8081  admin / admin
+  # ────────────────────────────────────────────────────────────────────
+
+  airflow-postgres:
+    image: postgres:16-alpine
+    container_name: airflow-postgres
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - airflow
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    <<: *shared-logs
+
+  airflow-init:
+    build:
+      context: ./airflow
+    image: stt-rag-airflow:latest
+    container_name: airflow-init
+    networks:
+      - rag-net
+    profiles:
+      - airflow
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: "dQHv0kzL_QlTDcRq7iTS1nMr2QfGZH6tFmGqJp7cYHs="
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local || true"
+    <<: *shared-logs
+
+  airflow-webserver:
+    build:
+      context: ./airflow
+    image: stt-rag-airflow:latest
+    container_name: airflow-webserver
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - airflow
+    ports:
+      - "8081:8080"
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: "dQHv0kzL_QlTDcRq7iTS1nMr2QfGZH6tFmGqJp7cYHs="
+      AIRFLOW__WEBSERVER__SECRET_KEY: "stt-rag-airflow-secret-32-chars-x"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: mlflow
+      AWS_SECRET_ACCESS_KEY: mlflow_secret
+      WHISPER_URL: http://asr:8000
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: "8080"
+      EMBEDDING_URL: http://infinity:7997/v1/embeddings
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./scripts:/opt/airflow/project/scripts
+      - ./src:/opt/airflow/project/src
+      - ./data:/opt/airflow/project/data
+    command: webserver
+    <<: *shared-logs
+
+  airflow-scheduler:
+    build:
+      context: ./airflow
+    image: stt-rag-airflow:latest
+    container_name: airflow-scheduler
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - airflow
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: "dQHv0kzL_QlTDcRq7iTS1nMr2QfGZH6tFmGqJp7cYHs="
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: mlflow
+      AWS_SECRET_ACCESS_KEY: mlflow_secret
+      WHISPER_URL: http://asr:8000
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: "8080"
+      EMBEDDING_URL: http://infinity:7997/v1/embeddings
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./scripts:/opt/airflow/project/scripts
+      - ./src:/opt/airflow/project/src
+      - ./data:/opt/airflow/project/data
+    command: scheduler
+    <<: *shared-logs
+
+  # ────────────────────────────────────────────────────────────────────
+  # MLflow stack: Postgres backend + MinIO artifacts
+  # Profiles: mlflow
+  # UI: http://localhost:5000
+  # MinIO console: http://localhost:9003  mlflow / mlflow_secret
+  # ────────────────────────────────────────────────────────────────────
+
+  mlflow-postgres:
+    image: postgres:16-alpine
+    container_name: mlflow-postgres
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - mlflow
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - mlflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    <<: *shared-logs
+
+  mlflow-minio:
+    image: minio/minio:latest
+    container_name: mlflow-minio
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - mlflow
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    environment:
+      MINIO_ROOT_USER: mlflow
+      MINIO_ROOT_PASSWORD: mlflow_secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - mlflow-minio-data:/data
+    <<: *shared-logs
+
+  mlflow-minio-init:
+    image: minio/mc:latest
+    container_name: mlflow-minio-init
+    networks:
+      - rag-net
+    profiles:
+      - mlflow
+    depends_on:
+      - mlflow-minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5 &&
+      mc alias set myminio http://mlflow-minio:9000 mlflow mlflow_secret &&
+      mc mb --ignore-existing myminio/mlflow-artifacts &&
+      echo 'mlflow-artifacts bucket ready'
+      "
+    <<: *shared-logs
+
+  mlflow-server:
+    build:
+      context: ./mlflow
+    image: stt-rag-mlflow:latest
+    container_name: mlflow-server
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - mlflow
+    ports:
+      - "5000:5000"
+    depends_on:
+      mlflow-postgres:
+        condition: service_healthy
+      mlflow-minio:
+        condition: service_started
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: mlflow
+      AWS_SECRET_ACCESS_KEY: mlflow_secret
+    command: >
+      mlflow server
+      --backend-store-uri postgresql+psycopg2://mlflow:mlflow@mlflow-postgres:5432/mlflow
+      --artifacts-destination s3://mlflow-artifacts
+      --host 0.0.0.0
+      --port 5000
+      --serve-artifacts
+    <<: *shared-logs
+
+  # ────────────────────────────────────────────────────────────────────
+  # Monitoring: Prometheus + Grafana + dcgm-exporter + node-exporter + cAdvisor
+  # Profiles: monitoring
+  # Grafana: http://localhost:3001  admin / admin
+  # Prometheus: http://localhost:9090
+  # ────────────────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - monitoring
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=14d'
+    <<: *shared-logs
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - monitoring
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    <<: *shared-logs
+
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.7-3.5.0-ubuntu22.04
+    container_name: dcgm-exporter
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - monitoring
+    ports:
+      - "9400:9400"
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    cap_add:
+      - SYS_ADMIN
+    <<: *shared-logs
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - monitoring
+    ports:
+      - "9100:9100"
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    <<: *shared-logs
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - monitoring
+    ports:
+      - "8082:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    <<: *shared-logs
+
 volumes:
   weaviate-data:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
   langfuse-minio-data:
+  airflow-postgres-data:
+  mlflow-postgres-data:
+  mlflow-minio-data:
+  prometheus-data:
+  grafana-data:
