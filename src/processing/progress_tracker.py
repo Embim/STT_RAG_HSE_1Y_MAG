@@ -71,6 +71,17 @@ def _tracking_uri() -> Optional[str]:
         return None
 
 
+def _registry_uri() -> Optional[str]:
+    uri = os.environ.get("MLFLOW_REGISTRY_URI")
+    if uri:
+        return uri
+    try:
+        from settings import settings
+        return settings.MLFLOW_REGISTRY_URI or None
+    except Exception:
+        return None
+
+
 def _experiment_name() -> str:
     return os.environ.get("MLFLOW_EXPERIMENT_NAME") or "stt-rag-ingest"
 
@@ -270,6 +281,7 @@ def _ensure_mlflow_session():
         return None, None, None
     try:
         mlflow.set_tracking_uri(uri)
+        mlflow.set_registry_uri(_registry_uri() or uri)
         mlflow.set_experiment(_experiment_name())
     except Exception as e:
         logger.warning("Cannot configure MLflow: %s — falling back to noop", e)

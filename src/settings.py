@@ -40,10 +40,13 @@ class Settings(BaseSettings):
 
     # MLflow — process tracking + experiment runs.
     # Если MLFLOW_TRACKING_URI пуст — инструментация работает в noop-режиме.
-    MLFLOW_TRACKING_URI: str = "http://localhost:5000"
+    MLFLOW_TRACKING_URI: str = "http://localhost:5001"
+    MLFLOW_REGISTRY_URI: str = ""
     MLFLOW_S3_ENDPOINT_URL: str = "http://localhost:9002"
     MLFLOW_ARTIFACT_BUCKET: str = "mlflow-artifacts"
     MLFLOW_EXPERIMENT_NAME: str = "stt-rag-ingest"
+    MLFLOW_ASR_REGISTERED_MODEL_NAME: str = "stt-rag-asr"
+    MLFLOW_ASR_MODEL_ALIAS: str = "candidate"
     # Отдельный experiment для judge-прогонов: чтобы ingest-runs (с GPU/CPU
     # сайдкаром каждые 5 сек) не смешивались в одном UI list view с
     # judge-runs (короткие, без сайдкара, по 1 на ASR-backend).

@@ -747,7 +747,7 @@ services:
   # ────────────────────────────────────────────────────────────────────
   # MLflow stack: Postgres backend + MinIO artifacts
   # Profiles: mlflow
-  # UI: http://localhost:5000
+  # UI: http://localhost:5001
   # MinIO console: http://localhost:9003  mlflow / mlflow_secret
   # ────────────────────────────────────────────────────────────────────
 
@@ -820,7 +820,7 @@ services:
     profiles:
       - mlflow
     ports:
-      - "5000:5000"
+      - "5001:5000"
     depends_on:
       mlflow-postgres:
         condition: service_healthy
