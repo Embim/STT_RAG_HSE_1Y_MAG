@@ -24,8 +24,10 @@ from typing import Iterable, List, Optional
 
 from evaluation.asr.backends.base import ASRBackend
 from evaluation.asr.metrics import compute_corpus, compute_pair
+from evaluation.asr.model_registry import log_asr_model_to_registry
 from evaluation.reporting import csv_export, langfuse_export
 from processing.progress_tracker import tracked_run
+from settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +187,26 @@ async def run_benchmark(
 
         out_path = csv_export.write_rows(run_name, rows, kind="asr")
         mlrun.log_artifact(str(out_path))
+        log_asr_model_to_registry(
+            backend,
+            registered_model_name=settings.MLFLOW_ASR_REGISTERED_MODEL_NAME,
+            alias=settings.MLFLOW_ASR_MODEL_ALIAS,
+            run_id=mlrun.run_id,
+            tags={
+                "backend_name": backend.name,
+                "asr_model_id": asr_model_id,
+                "asr_url": asr_url,
+                "asr_endpoint": getattr(backend, "endpoint", ""),
+                "asr_language": getattr(backend, "language", ""),
+                "benchmark_label": benchmark_label,
+                "run_name": run_name,
+                "corpus_n": str(corpus.get("n", 0)),
+                "corpus_wer": str(corpus.get("wer", "")),
+                "corpus_cer": str(corpus.get("cer", "")),
+                "corpus_mer": str(corpus.get("mer", "")),
+                "corpus_wil": str(corpus.get("wil", "")),
+            },
+        )
         langfuse_export.flush()
         logger.info("ASR benchmark CSV: %s", out_path)
         return out_path
