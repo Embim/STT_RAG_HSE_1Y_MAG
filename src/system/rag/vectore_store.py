@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class VectorStoreManager:
     BATCH_SIZE = 100
     TOP_LOG_CANDIDATES = 3
+    OCR_TEXT_PROPERTY = "ocr_text"
 
     def __init__(self, collection_name: str | None = None):
         self.collection_name = collection_name or settings.WEAVIATE_COLLECTION_NAME
@@ -34,12 +35,36 @@ class VectorStoreManager:
                 ),
                 properties=[
                     Property(name="text", data_type=DataType.TEXT),
-                    Property(name="metadata", data_type=DataType.TEXT),
+                    Property(name="ocr_text", data_type=DataType.TEXT),
+                    Property(name="metadata", data_type=DataType.TEXT, skip_vectorization=True),
                 ]
             )
         
         self.collection = self.client.collections.get(self.collection_name)
+        self._ensure_collection_schema()
         logger.info("VectorStoreManager ready: collection=%r", self.collection_name)
+
+    def _ensure_collection_schema(self) -> None:
+        """Ensure required properties exist for backward compatibility."""
+        try:
+            config = self.collection.config.get()
+            existing_props = {prop.name for prop in (config.properties or [])}
+        except Exception as e:
+            logger.warning("Failed to inspect collection schema: %s", e)
+            return
+
+        if self.OCR_TEXT_PROPERTY not in existing_props:
+            logger.info(
+                "Adding missing property %r to collection %r",
+                self.OCR_TEXT_PROPERTY,
+                self.collection_name,
+            )
+            try:
+                self.collection.config.add_property(
+                    Property(name=self.OCR_TEXT_PROPERTY, data_type=DataType.TEXT)
+                )
+            except Exception as e:
+                logger.warning("Failed to add property %r: %s", self.OCR_TEXT_PROPERTY, e)
 
     def _hash_to_uuid(self, hash_str: str) -> str:
         """Преобразует hash в детерминированный UUID."""
@@ -81,9 +106,11 @@ class VectorStoreManager:
         all_ids = []
         
         for i, text in enumerate(texts_list):
+            meta = metadatas[i] if metadatas else {}
             properties = {
                 "text": text,
-                "metadata": str(metadatas[i]) if metadatas else "{}"
+                "ocr_text": meta.get("ocr_text", "") if meta else "",
+                "metadata": str(meta)
             }
             
             # Преобразуем hash в UUID если ids передан
@@ -98,9 +125,17 @@ class VectorStoreManager:
                 )
                 all_ids.append(str(uuid_result))
             except Exception as e:
-                if "already exists" in str(e):
-                    logger.warning("Skipping duplicate object: %s", obj_uuid)
+                err_text = str(e).lower()
+                if "already exists" in err_text and obj_uuid:
+                    self.collection.data.replace(
+                        uuid=obj_uuid,
+                        properties=properties,
+                    )
+                    logger.info("Updated duplicate object: %s", obj_uuid)
                     all_ids.append(str(obj_uuid))
+                elif "already exists" in err_text:
+                    logger.warning("Skipping duplicate object without uuid: %s", obj_uuid)
+                    all_ids.append(str(obj_uuid) if obj_uuid else "")
                 else:
                     raise
             

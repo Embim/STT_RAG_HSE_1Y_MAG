@@ -15,7 +15,7 @@ class IngestRequest(BaseModel):
     url: str = Field(..., description="YouTube video or playlist URL")
     export_txt: bool = Field(False, description="Save plain transcript .txt to data/transcripts/ and include in response")
     export_json: bool = Field(False, description="Save full transcript .json with segments/timestamps to data/transcripts/")
-    keep_video: bool = Field(False, description="Download and save full video to data/video/")
     keep_audio: bool = Field(False, description="Save extracted audio to data/audio/")
+    use_ocr: bool = Field(False, description="Extract text from video using EasyOCR")
 
 

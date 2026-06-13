@@ -161,7 +161,7 @@ def main():
             export_yt = st.checkbox("Export transcript as TXT", key="export_yt")
             export_yt_json = st.checkbox("Export transcript as JSON (с сегментами)", key="export_yt_json")
             keep_audio_yt = st.checkbox("Save extracted audio", key="keep_audio_yt")
-            keep_video_yt = st.checkbox("Download & keep full video", key="keep_video_yt")
+            use_ocr_yt = st.checkbox("Extract text from video (OCR)", key="use_ocr_yt")
 
             if st.button("Load", use_container_width=True, disabled=not yt_url, key="btn_yt"):
                 with st.spinner("⏳ Downloading and transcribing..."):
@@ -173,7 +173,7 @@ def main():
                                 "export_txt": export_yt,
                                 "export_json": export_yt_json,
                                 "keep_audio": keep_audio_yt,
-                                "keep_video": keep_video_yt,
+                                "use_ocr": use_ocr_yt,
                             },
                             timeout=3600,
                             proxies=_NO_PROXY,
@@ -214,6 +214,7 @@ def main():
             export_upload = st.checkbox("Export transcripts as TXT", key="export_upload")
             export_upload_json = st.checkbox("Export transcripts as JSON (с сегментами)", key="export_upload_json")
             keep_audio_upload = st.checkbox("Save extracted audio", key="keep_audio_upload")
+            use_ocr_upload = st.checkbox("Extract text from video (OCR)", key="use_ocr_upload")
 
             if st.button(
                 "Transcribe & Ingest",
@@ -240,6 +241,7 @@ def main():
                             "export_txt": "true" if export_upload else "false",
                             "export_json": "true" if export_upload_json else "false",
                             "keep_audio": "true" if keep_audio_upload else "false",
+                            "use_ocr": "true" if use_ocr_upload else "false",
                         }
                         resp = requests.post(
                             "http://localhost:8001/ingest-upload",
