@@ -1,0 +1,54 @@
+<section class="wrap">
+  <h1>DS Navigator</h1>
+  <p class="lede">Семантический поиск по транскриптам DS-лекций с ссылками на таймкоды.</p>
+
+  <div class="search-bar">
+    <input [(ngModel)]="question" (keydown.enter)="search()"
+           placeholder="Например: что такое механизм внимания в трансформерах?" />
+    <button (click)="search()" [disabled]="loading()">Найти</button>
+  </div>
+
+  <details class="controls">
+    <summary>Параметры</summary>
+    <label>источников: {{ topK }}
+      <input type="range" min="1" max="10" [(ngModel)]="topK" /></label>
+    <label>порог: {{ threshold.toFixed(2) }}
+      <input type="range" min="0" max="1" step="0.05" [(ngModel)]="threshold" /></label>
+    <label><input type="checkbox" [(ngModel)]="useRewrite" /> переформулировать запрос</label>
+    <label>область:
+      <select [(ngModel)]="sourceTitle">
+        <option value="">все материалы</option>
+        @for (s of sources(); track s) { <option [value]="s">{{ s }}</option> }
+      </select>
+    </label>
+  </details>
+
+  @if (loading()) { <p class="status">🔍 Поиск по базе…</p> }
+  @if (error()) { <p class="err">{{ error() }}</p> }
+
+  @if (result(); as r) {
+    @if (r.rewrite_applied && r.retrieval_query) {
+      <p class="rewrite">🔁 запрос переформулирован → <b>{{ r.retrieval_query }}</b></p>
+    }
+    <article class="answer" [innerHTML]="answerHtml(r.answer)"></article>
+
+    @if (r.retrieved_documents.length) {
+      <h2 class="src-h">Источники [{{ r.retrieved_documents.length }}]</h2>
+      @for (d of r.retrieved_documents; track $index; let i = $index) {
+        <div class="src">
+          <div class="idx">{{ (i + 1).toString().padStart(2, '0') }}</div>
+          <div>
+            <div class="src-meta">
+              <span class="title">{{ docTitle(d, i) }}</span>
+              @if (timecode(d.metadata.start_sec); as tc) { <span class="chip">◷ {{ tc }}</span> }
+            </div>
+            <p class="snip">{{ d.text }}</p>
+            @if (link(d.metadata.source_url, d.metadata.start_sec); as href) {
+              <a class="goto" [href]="href" target="_blank" rel="noopener">→ перейти к источнику</a>
+            }
+          </div>
+        </div>
+      }
+    }
+  }
+</section>
