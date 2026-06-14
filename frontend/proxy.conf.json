@@ -1,0 +1,8 @@
+{
+  "/forward": { "target": "http://localhost:8001", "secure": false },
+  "/source-files": { "target": "http://localhost:8001", "secure": false },
+  "/auth-check": { "target": "http://localhost:8001", "secure": false },
+  "/ingest": { "target": "http://localhost:8001", "secure": false },
+  "/ingest-upload": { "target": "http://localhost:8001", "secure": false },
+  "/check-vdb": { "target": "http://localhost:8001", "secure": false }
+}

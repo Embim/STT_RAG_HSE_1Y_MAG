@@ -6,4 +6,5 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/search/search.component').then(m => m.SearchComponent),
   },
+  { path: '**', redirectTo: '' },
 ];
