@@ -30,24 +30,26 @@
     @if (r.rewrite_applied && r.retrieval_query) {
       <p class="rewrite">🔁 запрос переформулирован → <b>{{ r.retrieval_query }}</b></p>
     }
-    <article class="answer" [innerHTML]="answerHtml(r.answer)"></article>
+    <article class="answer" [innerHTML]="answerHtml()"></article>
 
-    @if (r.retrieved_documents.length) {
-      <h2 class="src-h">Источники [{{ r.retrieved_documents.length }}]</h2>
-      @for (d of r.retrieved_documents; track $index; let i = $index) {
-        <div class="src">
-          <div class="idx">{{ (i + 1).toString().padStart(2, '0') }}</div>
-          <div>
-            <div class="src-meta">
-              <span class="title">{{ docTitle(d, i) }}</span>
-              @if (timecode(d.metadata.start_sec); as tc) { <span class="chip">◷ {{ tc }}</span> }
+    @if (r.retrieved_documents; as docs) {
+      @if (docs.length) {
+        <h2 class="src-h">Источники [{{ docs.length }}]</h2>
+        @for (d of docs; track $index; let i = $index) {
+          <div class="src">
+            <div class="idx">{{ (i + 1).toString().padStart(2, '0') }}</div>
+            <div>
+              <div class="src-meta">
+                <span class="title">{{ docTitle(d, i) }}</span>
+                @if (timecode(d.metadata.start_sec); as tc) { <span class="chip">◷ {{ tc }}</span> }
+              </div>
+              <p class="snip">{{ d.text }}</p>
+              @if (link(d.metadata.source_url, d.metadata.start_sec); as href) {
+                <a class="goto" [href]="href" target="_blank" rel="noopener">→ перейти к источнику</a>
+              }
             </div>
-            <p class="snip">{{ d.text }}</p>
-            @if (link(d.metadata.source_url, d.metadata.start_sec); as href) {
-              <a class="goto" [href]="href" target="_blank" rel="noopener">→ перейти к источнику</a>
-            }
           </div>
-        </div>
+        }
       }
     }
   }

@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -27,10 +27,15 @@ export class SearchComponent implements OnInit {
   error = signal<string | null>(null);
   result = signal<ForwardResponse | null>(null);
 
+  readonly answerHtml = computed(() => {
+    const r = this.result();
+    return r ? DOMPurify.sanitize(marked.parse(r.answer, { async: false })) : '';
+  });
+
   ngOnInit(): void {
     this.api.sourceFiles().subscribe({
       next: (r) => this.sources.set(r.files ?? []),
-      error: () => {},
+      error: (e) => console.warn('Could not load source list', e),
     });
   }
 
@@ -60,10 +65,6 @@ export class SearchComponent implements OnInit {
         this.loading.set(false);
       },
     });
-  }
-
-  answerHtml(md: string): string {
-    return DOMPurify.sanitize(marked.parse(md) as string);
   }
 
   timecode = formatTimecode;

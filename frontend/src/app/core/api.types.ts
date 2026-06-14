@@ -23,7 +23,7 @@ export interface RetrievedDoc {
 export interface ForwardResponse {
   answer: string;
   context?: string;
-  retrieved_documents: RetrievedDoc[];
+  retrieved_documents?: RetrievedDoc[];
   retrieval_query?: string;
   rewrite_applied?: boolean;
   source_title?: string | null;
