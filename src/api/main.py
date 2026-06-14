@@ -169,12 +169,14 @@ async def source_files():
 
 
 # ── Статический фронт (SPA) ──────────────────────────────────────────
-# Раздаём кастомный фронт по "/" тем же origin'ом, что и API → CORS не
-# нужен, один туннель отдаёт и сайт, и ручки. Mount добавлен ПОСЛЕ всех
-# API-роутов, поэтому /forward, /docs и т.п. матчатся раньше catch-all "/".
+# nginx раздаёт Angular-бандл в проде → SERVE_SPA=false в api-контейнере.
+# По умолчанию "true", чтобы локальный dev (uvicorn без nginx) всё ещё
+# отдавал src/web/index.html. Mount добавлен ПОСЛЕ всех API-роутов, поэтому
+# /forward, /docs и т.п. матчатся раньше catch-all "/".
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-if WEB_DIR.is_dir():
+_serve_spa = os.getenv("SERVE_SPA", "true").lower() not in ("false", "0", "no")
+if _serve_spa and WEB_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
     logger.info("Serving SPA from %s at /", WEB_DIR)
 else:
-    logger.warning("Web dir %s not found — SPA not served (API-only mode)", WEB_DIR)
+    logger.info("SPA serving disabled (SERVE_SPA=%s) — API-only mode", os.getenv("SERVE_SPA"))
