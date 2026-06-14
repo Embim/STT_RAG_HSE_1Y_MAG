@@ -131,10 +131,17 @@ services:
     profiles:
       - web
       - full
+    # LOCAL DEV defaults — переопредели ВСЕ через .env для прода (иначе сайт молча
+    # отдаёт самоподписанный серт без ошибки в браузере):
+    #   USE_LOCAL_CA=1  → самоподписанный серт, без обращения к ACME
+    #   STAGING=1       → staging-CA Let's Encrypt (тоже не доверяется браузером)
+    #   CERTBOT_EMAIL   → реальный email (LE отвергает test@example.com)
+    # ПРОД в .env: DOMAIN=<домен>, CERTBOT_EMAIL=<email>, STAGING=0, USE_LOCAL_CA=
+    #   (пустое значение реально выключает local-CA; "-" без двоеточия это позволяет).
     environment:
       CERTBOT_EMAIL: ${CERTBOT_EMAIL:-test@example.com}
-      STAGING: "1"
-      USE_LOCAL_CA: "1"
+      STAGING: "${STAGING:-1}"
+      USE_LOCAL_CA: "${USE_LOCAL_CA-1}"
     volumes:
       - letsencrypt:/etc/letsencrypt
     depends_on:
