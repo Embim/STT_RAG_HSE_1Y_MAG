@@ -1,5 +1,7 @@
 .git
 .venv
+.env
+.env.*
 **/__pycache__
 data/
 hf_cache/
