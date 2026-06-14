@@ -8,7 +8,12 @@
 
 **Tech Stack:** FastAPI + uv (Python 3.12), Docker Compose, nginx (jonasal/nginx-certbot), Angular 21 (standalone, esbuild), Node 22, pytest.
 
-**Scope note:** This is **Phase 1 of 3** from [the design](../specs/2026-06-14-selfhost-topology-design.md). Phase 2 (ingest UI + async jobs + Turnstile) and Phase 3 (WireGuard + full security hardening + network runbook) get their own plans. Phase 1 produces a working, locally-verifiable site: search only. The existing demo at `src/web/index.html` stays as a fallback (gated by `SERVE_SPA`) until Angular replaces it.
+**Scope note:** This is **Phase 1 of 4** from [the design](../specs/2026-06-14-selfhost-topology-design.md). Phase 2 (Auth), Phase 3 (ingest UI + async jobs), Phase 4 (WireGuard + hardening + runbook) get their own plans. Phase 1 produces a working, locally-verifiable site: search only. The existing demo at `src/web/index.html` stays as a fallback (gated by `SERVE_SPA`) until Angular replaces it.
+
+> **⚠️ Поправка (новое требование — аутентификация, весь сайт за логином; аккаунты выдаёт только админ).** Auth — это отдельная **Фаза 2**. Влияние на Фазу 1:
+> - **Task 7 урезан:** НЕ создавать `auth.store.ts` / `auth.interceptor.ts` и `?key=`-bootstrap (старая токен-модель устарела). Task 7 = только `environments` + `app.routes` + корневой компонент + dev-proxy. В Step 4 `app.config.ts` использовать `provideHttpClient()` **без** `withInterceptors(...)` и **без** `bootstrapToken()`. JWT-интерсептор, route-guard и login-страница — в Фазе 2.
+> - **`DEMO_ACCESS_TOKEN` ретайрится, Turnstile убирается** (сайт не публичный) — это уже поздние фазы; в Фазе 1 ничего про токен/Turnstile делать не нужно.
+> - Задачи 1–6 и 8 — без изменений.
 
 **Prerequisites for execution:**
 - Docker Desktop running; the existing `vdb`+`emb` stack can come up (`docker compose --profile vdb --profile emb up -d`).
