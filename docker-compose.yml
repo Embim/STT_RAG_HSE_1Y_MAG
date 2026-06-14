@@ -114,6 +114,33 @@ services:
         condition: service_healthy
     <<: *shared-logs
 
+  nginx:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        DOMAIN: ${DOMAIN:-localhost}
+    image: ds-navigator-web:latest
+    container_name: ds-navigator-nginx
+    restart: unless-stopped
+    networks:
+      - rag-net
+    ports:
+      - "80:80"
+      - "443:443"
+    profiles:
+      - web
+      - full
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-test@example.com}
+      STAGING: "1"
+      USE_LOCAL_CA: "1"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    depends_on:
+      - api
+    <<: *shared-logs
+
   # ────────────────────────────────────────────────────────────────────
   # ASR backends — все на одном порту 8000 с сетевым алиасом `asr`.
   # Запускаются эксклюзивно: один профиль = один backend на GPU.
@@ -991,3 +1018,4 @@ volumes:
   mlflow-minio-data:
   prometheus-data:
   grafana-data:
+  letsencrypt:
