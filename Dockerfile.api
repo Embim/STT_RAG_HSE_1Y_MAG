@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+COPY src ./src
+
+FROM python:3.12-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd -m -u 1000 appuser
+COPY --from=builder --chown=appuser:appuser /app /app
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    SERVE_SPA=false
+WORKDIR /app/src
+USER appuser
+EXPOSE 8001
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8001", \
+     "--proxy-headers", "--forwarded-allow-ips=*"]
