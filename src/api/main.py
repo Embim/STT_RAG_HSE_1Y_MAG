@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from system.rag.pipeline import run
-from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
+from system.llm.llm_services import get_chat_vectore_store_manager
 from system.tracing import flush as langfuse_flush
 from downloader.processor import process_youtube, process_uploaded_files
 from api.schemas import ForwardRequest, IngestRequest
@@ -101,7 +101,7 @@ async def healthcheck():
 @app.get("/check-vdb", tags=["Health"])
 async def check_vdb():
     try:
-        collection = CHAT_VECTORE_STORE_MANAGER.collection
+        collection = get_chat_vectore_store_manager().collection
         count = collection.aggregate.over_all(total_count=True).total_count
         return {"status": "ok", "documents_in_vdb": count}
     except Exception:
@@ -161,7 +161,7 @@ async def forward(req: ForwardRequest):
 @app.get("/source-files", tags=["Usage"])
 async def source_files():
     try:
-        files = CHAT_VECTORE_STORE_MANAGER.list_source_titles()
+        files = get_chat_vectore_store_manager().list_source_titles()
         return {"files": files}
     except Exception as e:
         logger.exception("Error in /source-files: %s", e)

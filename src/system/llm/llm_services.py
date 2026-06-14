@@ -9,8 +9,19 @@ from system.tracing import get_client, observe
 logger = logging.getLogger(__name__)
 
 
-def init_vectore_store_manager() -> VectorStoreManager:
-    return VectorStoreManager()
+_CHAT_VECTORE_STORE_MANAGER: VectorStoreManager | None = None
+
+
+def get_chat_vectore_store_manager() -> VectorStoreManager:
+    """Lazily create and cache the Weaviate-backed manager.
+
+    Connecting at import time (the old module-level singleton) crash-looped the
+    containerized API whenever Weaviate wasn't ready yet. Connect on first use.
+    """
+    global _CHAT_VECTORE_STORE_MANAGER
+    if _CHAT_VECTORE_STORE_MANAGER is None:
+        _CHAT_VECTORE_STORE_MANAGER = VectorStoreManager()
+    return _CHAT_VECTORE_STORE_MANAGER
 
 
 class OpenRouterClient:
@@ -59,4 +70,3 @@ class OpenRouterClient:
 LLM_REWRITE = OpenRouterClient()
 LLM_GENERATE_ANSWER = OpenRouterClient()
 
-CHAT_VECTORE_STORE_MANAGER = init_vectore_store_manager()

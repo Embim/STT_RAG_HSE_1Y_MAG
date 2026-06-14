@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
+from system.llm.llm_services import get_chat_vectore_store_manager
 from settings import settings
 import logging
 
@@ -130,7 +130,7 @@ async def ingest_json_to_vector_store(data_list: List[Dict[str, Any]]):
     metas = [doc.metadata for doc in all_docs]
     ids = [f"{meta['hash']}_{meta['chunk_index']}" for meta in metas]
     
-    await CHAT_VECTORE_STORE_MANAGER.add_texts(texts=texts, metadatas=metas, ids=ids)
+    await get_chat_vectore_store_manager().add_texts(texts=texts, metadatas=metas, ids=ids)
     logger.info(f"Ingested {len(all_docs)} chunks from {len(data_list)} documents")
 
 

@@ -1,7 +1,7 @@
 import logging
 
 from settings import settings
-from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
+from system.llm.llm_services import get_chat_vectore_store_manager
 from system.rag.vectore_store import VectorStoreManager
 from system.rag.question_rewriter import rewrite
 from system.rag.retriver import retrieve
@@ -22,9 +22,11 @@ async def run(
         use_rewrite: bool = True,
         source_file_name: str | None = None,
         source_title: str | None = None,
-        vector_store_manager: VectorStoreManager = CHAT_VECTORE_STORE_MANAGER,
+        vector_store_manager: VectorStoreManager | None = None,
 ):
     try:
+        if vector_store_manager is None:
+            vector_store_manager = get_chat_vectore_store_manager()
         logger.info(
             "RAG query: %r (top_k=%d, threshold=%.2f, rewrite=%s, source_file_name=%r, source_title=%r)",
             question,
