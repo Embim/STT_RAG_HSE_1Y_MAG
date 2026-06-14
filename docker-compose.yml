@@ -77,6 +77,41 @@ services:
       AUTOSCHEMA_ENABLED: "true"
     volumes:
       - weaviate-data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    <<: *shared-logs
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: stt-rag-api:latest
+    container_name: stt-rag-api
+    restart: unless-stopped
+    networks:
+      - rag-net
+    expose:
+      - "8001"
+    profiles:
+      - web
+      - full
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: "8080"
+      EMBEDDING_URL: http://infinity:7997/v1/embeddings
+      WEAVIATE_VECTORIZER_BASE_URL: http://infinity:7997
+      WHISPER_URL: http://asr:8000
+      SERVE_SPA: "false"
+    depends_on:
+      weaviate:
+        condition: service_healthy
     <<: *shared-logs
 
   # ────────────────────────────────────────────────────────────────────
