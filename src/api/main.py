@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List
@@ -7,6 +8,7 @@ import colorlog
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from system.rag.pipeline import run
 from system.llm.llm_services import CHAT_VECTORE_STORE_MANAGER
@@ -51,14 +53,44 @@ app = FastAPI(title="DS Navigator API", lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
 
+# ── Access gate ──────────────────────────────────────────────────────
+# Когда задан DEMO_ACCESS_TOKEN — дорогие/абьюзо-опасные ручки требуют
+# заголовок X-Demo-Token (или ?key=...). Нужно при публичной выдаче через
+# туннель: /forward жжёт OpenRouter-кредиты, ingest качает+транскрибирует
+# по запросу. Пусто (дефолт) → гейт выключен, локальная разработка как была.
+DEMO_ACCESS_TOKEN = os.getenv("DEMO_ACCESS_TOKEN", "")
+_PROTECTED_PATHS = {"/forward", "/ingest", "/ingest-upload"}
+
+
+@app.middleware("http")
+async def access_gate(request: Request, call_next):
+    if DEMO_ACCESS_TOKEN and request.url.path in _PROTECTED_PATHS:
+        provided = request.headers.get("X-Demo-Token") or request.query_params.get("key")
+        if provided != DEMO_ACCESS_TOKEN:
+            return JSONResponse(status_code=401, content={"detail": "unauthorized"})
+    return await call_next(request)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=400, content={"detail": "bad request"})
 
 
-@app.get("/", tags=["Root"])
+@app.get("/api", tags=["Root"])
 async def root():
     return {"message": "Welcome to DS Navigator API", "documentation": "/docs"}
+
+
+@app.get("/auth-check", tags=["Health"])
+async def auth_check(request: Request):
+    """Фронт дёргает это, чтобы проверить введённый ключ перед стартом.
+    Если гейт выключен — всегда ok. Если включён — проверяет X-Demo-Token."""
+    if not DEMO_ACCESS_TOKEN:
+        return {"gate": False, "ok": True}
+    provided = request.headers.get("X-Demo-Token") or request.query_params.get("key")
+    if provided != DEMO_ACCESS_TOKEN:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    return {"gate": True, "ok": True}
 
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
@@ -134,3 +166,15 @@ async def source_files():
     except Exception as e:
         logger.exception("Error in /source-files: %s", e)
         raise HTTPException(status_code=500, detail="не удалось получить список файлов")
+
+
+# ── Статический фронт (SPA) ──────────────────────────────────────────
+# Раздаём кастомный фронт по "/" тем же origin'ом, что и API → CORS не
+# нужен, один туннель отдаёт и сайт, и ручки. Mount добавлен ПОСЛЕ всех
+# API-роутов, поэтому /forward, /docs и т.п. матчатся раньше catch-all "/".
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+if WEB_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
+    logger.info("Serving SPA from %s at /", WEB_DIR)
+else:
+    logger.warning("Web dir %s not found — SPA not served (API-only mode)", WEB_DIR)
