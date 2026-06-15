@@ -79,16 +79,16 @@ async def check_vdb():
 @app.post("/ingest", tags=["Ingest"])
 async def ingest(req: IngestRequest):
     logger.info(
-        "Ingest request: %s (keep_video=%s, keep_audio=%s, export_txt=%s, export_json=%s)",
-        req.url, req.keep_video, req.keep_audio, req.export_txt, req.export_json,
+        "Ingest request: %s (keep_audio=%s, export_txt=%s, export_json=%s, use_ocr=%s)",
+        req.url, req.keep_audio, req.export_txt, req.export_json, req.use_ocr
     )
     try:
         return await process_youtube(
             url=req.url,
-            keep_video=req.keep_video,
             export_txt=req.export_txt,
             export_json=req.export_json,
             keep_audio=req.keep_audio,
+            use_ocr=req.use_ocr,
         )
     except Exception as e:
         logger.error("Ingest failed for %s: %s", req.url, e)
@@ -101,13 +101,24 @@ async def ingest_upload(
     export_txt: bool = False,
     export_json: bool = False,
     keep_audio: bool = False,
+    use_ocr: bool = False,
 ):
-    return await process_uploaded_files(
+    result = await process_uploaded_files(
         files=files,
         export_txt=export_txt,
         export_json=export_json,
         keep_audio=keep_audio,
+        use_ocr=use_ocr,
     )
+    if result.get("ingested_count", 0) == 0 and result.get("error_count", 0) > 0:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "не удалось обработать загруженные файлы",
+                "errors": result.get("errors", []),
+            },
+        )
+    return result
 
 
 @app.post("/forward", tags=["Usage"])
