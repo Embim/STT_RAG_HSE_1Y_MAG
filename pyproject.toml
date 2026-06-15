@@ -3,7 +3,7 @@ name = "stt-rag-hse-1y-mag"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "colorlog>=6.10.1",
     "fastapi>=0.133.1",
@@ -24,6 +24,9 @@ dependencies = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.13.0",
     "psycopg2-binary>=2.9.12",
+    "easyocr>=1.7.2",
+    "opencv-python-headless>=4.13.0.92",
+    "numpy>=2.4.2",
 ]
 
 [project.optional-dependencies]

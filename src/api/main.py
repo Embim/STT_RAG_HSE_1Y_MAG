@@ -94,8 +94,9 @@ async def _run_youtube_job(job_id: str, req: IngestRequest) -> None:
     update_job(job_id, status="running")
     try:
         res = await process_youtube(
-            url=req.url, keep_video=req.keep_video, export_txt=req.export_txt,
+            url=req.url, export_txt=req.export_txt,
             export_json=req.export_json, keep_audio=req.keep_audio,
+            use_ocr=req.use_ocr,
             progress_cb=lambda u: update_job(job_id, **u),
         )
         update_job(job_id, status="done", progress=100.0, items=res["items"],
@@ -107,11 +108,12 @@ async def _run_youtube_job(job_id: str, req: IngestRequest) -> None:
         update_job(job_id, status="error", detail=str(e))
 
 
-async def _run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio) -> None:
+async def _run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio, use_ocr) -> None:
     update_job(job_id, status="running")
     try:
         res = await process_saved_uploads(
             saved, export_txt=export_txt, export_json=export_json, keep_audio=keep_audio,
+            use_ocr=use_ocr,
             progress_cb=lambda u: update_job(job_id, **u),
         )
         update_job(job_id, status="done", progress=100.0, items=res["items"],
@@ -138,6 +140,7 @@ async def ingest_upload(
     export_txt: bool = False,
     export_json: bool = False,
     keep_audio: bool = False,
+    use_ocr: bool = False,
     user: User = Depends(get_current_user),
 ):
     tmp_dir = tempfile.mkdtemp(prefix="ingest_up_")
@@ -159,7 +162,7 @@ async def ingest_upload(
                 out.write(chunk)
         saved.append((dest, name))
     job_id = create_job()
-    asyncio.create_task(_run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio))
+    asyncio.create_task(_run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio, use_ocr))
     return {"job_id": job_id, "status": "queued"}
 
 

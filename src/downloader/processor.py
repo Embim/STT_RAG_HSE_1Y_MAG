@@ -15,6 +15,14 @@ from downloader.transcriber import transcribe
 from downloader.ingest import ingest_json_to_vector_store
 from downloader.sources.youtube import download_audio, download_video, get_playlist_urls
 from downloader.sources.local_audio import extract_audio_from_video
+try:
+    from downloader.ocr import extract_text_from_video, merge_ocr_segments
+except ImportError:
+    # OCR-зависимости (easyocr/opencv/torch) тяжёлые и нужны только при use_ocr=True.
+    # Если они не установлены (напр. на машине без GPU), приложение всё равно
+    # стартует и работает — OCR просто молча отключается.
+    extract_text_from_video = None
+    merge_ocr_segments = None
 from processing.chunked_transcribe import ffprobe_metadata, transcribe_chunked
 from processing.progress_tracker import video_run
 from processing.quality_signals import compute as compute_quality_signals
@@ -33,27 +41,27 @@ def _safe_filename(title: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", title)
 
 
-async def prepare_audio(url: str, keep_video: bool) -> tuple[str, str, str]:
-    """Download audio (and optionally keep video) from a YouTube URL.
+async def prepare_audio(url: str, use_ocr: bool) -> tuple[str, str, str, str | None]:
+    """Download audio from YouTube URL and optionally keep temp video for OCR.
 
     Returns:
-        (audio_path, doc_id, title)
+        (audio_path, doc_id, title, video_path)
     """
-    if keep_video:
+    if use_ocr:
         video_path = await asyncio.to_thread(download_video, url)
         local_result = await asyncio.to_thread(extract_audio_from_video, video_path)
-        return local_result.audio_path, local_result.file_id, local_result.title
+        return local_result.audio_path, local_result.file_id, local_result.title, video_path
     else:
         dr = await asyncio.to_thread(download_audio, url)
-        return dr.audio_path, dr.video_id, dr.title
+        return dr.audio_path, dr.video_id, dr.title, None
 
 
 async def process_youtube(
     url: str,
-    keep_video: bool,
     export_txt: bool,
     export_json: bool = False,
     keep_audio: bool = False,
+    use_ocr: bool = False,
     progress_cb: Callable[[dict], None] | None = None,
 ) -> dict:
     """Download, transcribe and ingest a YouTube URL (video or playlist).
@@ -84,7 +92,7 @@ async def process_youtube(
 
     async def _process_one(video_url: str) -> dict:
         async with sem:
-            audio_path, doc_id, title = await prepare_audio(video_url, keep_video)
+            audio_path, doc_id, title, video_path = await prepare_audio(video_url, use_ocr)
 
             def _chunk(idx: int, total_chunks: int, extra: dict) -> None:
                 fractions[video_url] = idx / max(1, total_chunks)
@@ -98,6 +106,7 @@ async def process_youtube(
                 export_json=export_json,
                 keep_audio=keep_audio,
                 source_url=video_url,
+                video_path=video_path if use_ocr else None,
                 progress_cb=_chunk,
             )
             fractions[video_url] = 1.0
@@ -126,6 +135,7 @@ async def process_saved_uploads(
     export_txt: bool,
     export_json: bool = False,
     keep_audio: bool = False,
+    use_ocr: bool = False,
     progress_cb: Callable[[dict], None] | None = None,
 ) -> dict:
     """Transcribe+ingest already-saved upload files. `saved` = [(path, original_filename)]."""
@@ -155,6 +165,7 @@ async def process_saved_uploads(
                     audio_path=local_result.audio_path, doc_id=local_result.file_id,
                     title=local_result.title, export_txt=export_txt, export_json=export_json,
                     keep_audio=keep_audio, source_url=None, source_file_name=filename,
+                    video_path=path if use_ocr else None,
                     progress_cb=_chunk,
                 )
                 item["file_id"] = item.pop("doc_id")
@@ -184,6 +195,7 @@ async def transcribe_and_ingest(
     export_json: bool = False,
     keep_audio: bool = False,
     parent_batch_run_id: str | None = None,
+    video_path: str | None = None,
     progress_cb: Callable[[int, int, dict], None] | None = None,
 ) -> dict:
     """Transcribe audio, ingest into vector store, optionally persist artifacts.
@@ -265,6 +277,22 @@ async def transcribe_and_ingest(
                     progress_cb(1, 1, {})
             text = transcript["text"]
             segments = transcript.get("segments", [])
+            
+            if video_path and extract_text_from_video and Path(video_path).exists():
+                logger.info("Extracting OCR from video: %s", video_path)
+                ocr_segments = await asyncio.to_thread(extract_text_from_video, video_path, 15)
+                
+                # Если в ответе ASR не было сегментов (только сплошной текст),
+                # мы не будем выдумывать 15-секундные отрезки, так как у нас есть встроенная 
+                # функция _create_documents_from_text в ingest.py, которая отлично бьет
+                # сплошной текст на чанки через RecursiveCharacterTextSplitter.
+                if not segments and text:
+                    logger.info("No segments returned by ASR. Relying on fallback text splitter in ingest.py")
+                else:
+                    segments = merge_ocr_segments(segments, ocr_segments)
+
+                ocr_data_list = ocr_segments
+                
             logger.info("Transcription done: %s — %d chars, %d segments", title, len(text), len(segments))
             run.log_metric("total_chars", len(text))
             run.log_metric("total_segments", len(segments))
@@ -291,10 +319,17 @@ async def transcribe_and_ingest(
                     title, qs.get("n_loop_segments"), qs.get("unique_word_ratio"), qs.get("lowercase_segment_pct"),
                 )
         finally:
-            try:
-                os.remove(audio_path)
-            except OSError:
-                pass
+            cleanup_paths: list[str] = []
+            if audio_path:
+                cleanup_paths.append(audio_path)
+            if video_path and video_path != audio_path:
+                cleanup_paths.append(video_path)
+
+            for path in cleanup_paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
         logger.info("Ingesting into vector store: %s", title)
         ingest_started = time.time()
@@ -304,6 +339,7 @@ async def transcribe_and_ingest(
                     "hash": doc_id,
                     "text": text,
                     "segments": segments,
+                    "ocr_segments": ocr_data_list if 'ocr_data_list' in locals() else [],
                     "title": title,
                     "source_url": source_url,
                     "source_file_name": source_file_name,

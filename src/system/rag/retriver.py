@@ -39,6 +39,7 @@ def _pack_results(
         source_url = doc.metadata.get("source_url")
         source_file_name = doc.metadata.get("source_file_name")
         title = doc.metadata.get("title")
+        ocr_text = doc.metadata.get("ocr_text")
 
         header_parts: List[str] = []
         if start_ts and end_ts:
@@ -50,9 +51,14 @@ def _pack_results(
             header_parts.append(str(source_url))
 
         if header_parts:
-            blocks.append(f"[{' | '.join(header_parts)}]\n{doc.page_content}")
+            block = f"[{' | '.join(header_parts)}]\n{doc.page_content}"
         else:
-            blocks.append(doc.page_content)
+            block = doc.page_content
+            
+        if ocr_text:
+            block += f"\n[ВИЗУАЛЬНЫЙ ТЕКСТ НА ЭКРАНЕ: {ocr_text}]"
+            
+        blocks.append(block)
 
     return "\n\n".join(blocks)
 

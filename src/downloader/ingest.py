@@ -20,21 +20,47 @@ def _create_documents_from_text(data: Dict[str, Any]) -> List[Document]:
     )
 
     chunks = text_splitter.split_text(data["text"])
-
-    documents = [
-        Document(
-            page_content=chunk,
-            metadata={
-                "hash": data["hash"],
-                "chunk_index": i,
-                "total_chunks": len(chunks),
-                "title": data.get("title"),
-                "source_url": data.get("source_url"),
-                "source_file_name": data.get("source_file_name"),
-            }
+    ocr_segments = data.get("ocr_segments", [])
+    
+    # Распределяем OCR-сегменты по чанкам.
+    # Так как у ASR-текста нет таймкодов, мы можем лишь грубо сопоставить OCR-сегменты
+    # по проценту продвижения по чанкам.
+    total_ocr_segments = len(ocr_segments)
+    total_chunks = len(chunks)
+    
+    documents = []
+    for i, chunk in enumerate(chunks):
+        current_ocr_parts = []
+        # Этот блок выполнится только если в data пришли ocr_segments (то есть стоял флаг в UI)
+        if total_ocr_segments > 0 and total_chunks > 0:
+            # Находим долю этого чанка от общего количества
+            start_ratio = i / total_chunks
+            end_ratio = (i + 1) / total_chunks
+            
+            start_idx = int(start_ratio * total_ocr_segments)
+            end_idx = int(end_ratio * total_ocr_segments)
+            
+            for ocr_seg in ocr_segments[start_idx:end_idx]:
+                clean_ocr = str(ocr_seg.get("text", "")).replace("[ВИЗУАЛЬНЫЙ ТЕКСТ НА ЭКРАНЕ:", "").replace("]", "").strip()
+                if clean_ocr:
+                    current_ocr_parts.append(clean_ocr)
+        
+        # Если OCR не запускался (или на слайдах не было текста),
+        # то current_ocr_parts останется пустым, и в метаданные запишется пустая строка "".
+        documents.append(
+            Document(
+                page_content=chunk,
+                metadata={
+                    "hash": data["hash"],
+                    "chunk_index": i,
+                    "total_chunks": total_chunks,
+                    "title": data.get("title"),
+                    "source_url": data.get("source_url"),
+                    "source_file_name": data.get("source_file_name"),
+                    "ocr_text": " | ".join(current_ocr_parts) if current_ocr_parts else "",
+                }
+            )
         )
-        for i, chunk in enumerate(chunks)
-    ]
 
     return documents
 
@@ -46,6 +72,7 @@ def _create_documents_from_segments(data: Dict[str, Any]) -> List[Document]:
 
     chunks: List[Dict[str, Any]] = []
     current_text_parts: List[str] = []
+    current_ocr_parts: List[str] = []
     current_start: float | None = None
     current_end: float | None = None
     current_size = 0
@@ -54,19 +81,30 @@ def _create_documents_from_segments(data: Dict[str, Any]) -> List[Document]:
         segment_text = str(segment.get("text", "")).strip()
         if not segment_text:
             continue
+            
         segment_start = float(segment.get("start", 0.0) or 0.0)
         segment_end = float(segment.get("end", segment_start) or segment_start)
+        
+        is_ocr = "[ВИЗУАЛЬНЫЙ ТЕКСТ НА ЭКРАНЕ:" in segment_text
+        
+        if is_ocr:
+            clean_ocr = segment_text.replace("[ВИЗУАЛЬНЫЙ ТЕКСТ НА ЭКРАНЕ:", "").replace("]", "").strip()
+            if clean_ocr:
+                current_ocr_parts.append(clean_ocr)
+            continue
 
         next_size = current_size + len(segment_text) + (1 if current_text_parts else 0)
         if current_text_parts and next_size > settings.CHUNK_SIZE:
             chunks.append(
                 {
                     "text": " ".join(current_text_parts),
+                    "ocr_text": " | ".join(current_ocr_parts) if current_ocr_parts else "",
                     "start_sec": current_start,
                     "end_sec": current_end,
                 }
             )
             current_text_parts = [segment_text]
+            current_ocr_parts = []
             current_start = segment_start
             current_end = segment_end
             current_size = len(segment_text)
@@ -82,6 +120,7 @@ def _create_documents_from_segments(data: Dict[str, Any]) -> List[Document]:
         chunks.append(
             {
                 "text": " ".join(current_text_parts),
+                "ocr_text": " | ".join(current_ocr_parts) if current_ocr_parts else "",
                 "start_sec": current_start,
                 "end_sec": current_end,
             }
@@ -96,6 +135,7 @@ def _create_documents_from_segments(data: Dict[str, Any]) -> List[Document]:
                 "total_chunks": len(chunks),
                 "start_sec": chunk["start_sec"],
                 "end_sec": chunk["end_sec"],
+                "ocr_text": chunk["ocr_text"],
                 "title": data.get("title"),
                 "source_url": data.get("source_url"),
                 "source_file_name": data.get("source_file_name"),
