@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     JUDGE_PROMPT_DIR: str = "prompts/judge"
 
     # ── Auth (Phase 2) ──────────────────────────────────────────────
-    JWT_SECRET: str = "dev-insecure-change-me"   # MUST override in .env for prod
+    JWT_SECRET: str = "dev-insecure-change-me-in-dotenv!"   # 34B dev default; MUST override in .env for prod
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 720                # 12h
     ADMIN_USERNAME: str = "admin"
