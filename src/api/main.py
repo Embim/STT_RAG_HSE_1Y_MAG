@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     langfuse_flush()
 
 
-app = FastAPI(title="DS Navigator API", lifespan=lifespan)
+app = FastAPI(title="Астролябия API", lifespan=lifespan)
 app.include_router(auth_router)
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.get("/api", tags=["Root"])
 async def root():
-    return {"message": "Welcome to DS Navigator API", "documentation": "/docs"}
+    return {"message": "Астролябия API", "documentation": "/docs"}
 
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
