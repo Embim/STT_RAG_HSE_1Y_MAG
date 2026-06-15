@@ -3,9 +3,9 @@ import {
 } from '@angular/core';
 
 interface Star    { x: number; y: number; z: number; r: number; a: number; tw: number; ph: number; c: string; }
-interface Shoot   { x: number; y: number; vx: number; vy: number; life: number; max: number; len: number; rot: number; rspd: number; size: number; }
-interface Orbiter { rr: number; ang: number; spd: number; size: number; c: number[]; rot: number; rspd: number; inc: number; squash: number; tphase: number; }
-interface Gem     { x: number; y: number; vx: number; vy: number; R: number; rot: number; rspd: number; depth: number; base: number[]; }
+interface Shoot   { x: number; y: number; vx: number; vy: number; life: number; max: number; len: number; rot: number; rspd: number; size: number; ax: number; ay: number; axs: number; ays: number; }
+interface Orbiter { rr: number; ang: number; spd: number; size: number; c: number[]; rot: number; rspd: number; inc: number; squash: number; tphase: number; ax: number; ay: number; axs: number; ays: number; }
+interface Gem     { x: number; y: number; vx: number; vy: number; R: number; rot: number; rspd: number; depth: number; base: number[]; ax: number; ay: number; axs: number; ays: number; }
 
 @Component({
   selector: 'app-starfield',
@@ -122,6 +122,10 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
           inc,
           squash:  Math.cos(inc),
           tphase:  Math.random() * Math.PI * 2,
+          ax:      Math.random() * Math.PI * 2,
+          ay:      Math.random() * Math.PI * 2,
+          axs:     (0.0006 + Math.random() * 0.0007) * (Math.random() < 0.5 ? 1 : -1),
+          ays:     (0.0006 + Math.random() * 0.0007) * (Math.random() < 0.5 ? 1 : -1),
         };
       });
     } else {
@@ -151,6 +155,10 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         rspd:  (0.0006 + Math.random() * 0.001) * (Math.random() < 0.5 ? 1 : -1),
         depth:  0.6 + Math.random() * 0.4,
         base:   gemBases[i],
+        ax:     Math.random() * Math.PI * 2,
+        ay:     Math.random() * Math.PI * 2,
+        axs:    (0.0005 + Math.random() * 0.0006) * (Math.random() < 0.5 ? 1 : -1),
+        ays:    (0.0005 + Math.random() * 0.0006) * (Math.random() < 0.5 ? 1 : -1),
       }));
     }
   }
@@ -170,6 +178,10 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
       rot:  0,
       rspd: 0.004 + Math.random() * 0.004,   // 0.004..0.008 rad/ms
       size: 4 + Math.random() * 2,            // 4..6 px
+      ax:   Math.random() * Math.PI * 2,
+      ay:   Math.random() * Math.PI * 2,
+      axs:  (0.0009 + Math.random() * 0.0007) * (Math.random() < 0.5 ? 1 : -1),
+      ays:  (0.0009 + Math.random() * 0.0007) * (Math.random() < 0.5 ? 1 : -1),
     });
   }
 
@@ -182,6 +194,8 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     R: number, rot: number,
     base: number[],
     ornate: boolean,
+    sx = 1,
+    sy = 1,
   ): void {
     const inner = R * 0.20;
     const light = -Math.PI / 4;
@@ -195,9 +209,15 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     ctx.save();
     ctx.translate(cx, cy);
 
-    // round soft halo
+    // fake-3D tumble: foreshorten along screen axes; keep a thin sliver at edge-on (don't vanish)
+    const cm = (v: number) => (v < 0 ? Math.min(v, -0.12) : Math.max(v, 0.12));
+    const facing = Math.sqrt(Math.abs(sx * sy));   // 1 = facing viewer, ~0 = edge-on
+    ctx.scale(cm(sx), cm(sy));
+
+    // round soft halo (dimmed when edge-on for depth cue)
+    const haloAlpha0 = (0.22 * (0.35 + 0.65 * facing)).toFixed(3);
     const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 1.7);
-    halo.addColorStop(0, `rgba(${base[0]},${base[1]},${base[2]},0.22)`);
+    halo.addColorStop(0, `rgba(${base[0]},${base[1]},${base[2]},${haloAlpha0})`);
     halo.addColorStop(1, `rgba(${base[0]},${base[1]},${base[2]},0)`);
     ctx.fillStyle = halo;
     ctx.beginPath(); ctx.arc(0, 0, R * 1.7, 0, Math.PI * 2); ctx.fill();
@@ -245,9 +265,10 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     }
     ctx.restore();
 
-    // specular core
+    // specular core (dimmed when edge-on for depth cue)
+    const coreAlpha = (0.95 * (0.45 + 0.55 * facing)).toFixed(3);
     ctx.beginPath(); ctx.arc(0, 0, R * 0.16, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,250,240,0.95)'; ctx.fill();
+    ctx.fillStyle = `rgba(255,250,240,${coreAlpha})`; ctx.fill();
 
     // edge ornaments (only for big/ornate gems): outline + beads at tips and notches
     if (ornate) {
@@ -311,6 +332,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         sh.life += dt;
         sh.x += sh.vx * dt; sh.y += sh.vy * dt;
         sh.rot += sh.rspd * dt;
+        sh.ax += sh.axs * dt; sh.ay += sh.ays * dt;
 
         const p     = sh.life / sh.max;
         const alpha = Math.sin(Math.min(p, 1) * Math.PI) * 0.9;
@@ -325,8 +347,9 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(tx, ty); ctx.stroke();
 
         // spinning sparkle head at the leading point
+        const shSx = Math.cos(sh.ay); const shSy = Math.cos(sh.ax);
         ctx.globalAlpha = alpha;
-        this.drawStar(ctx, sh.x, sh.y, sh.size, sh.rot, [236, 230, 216], false);
+        this.drawStar(ctx, sh.x, sh.y, sh.size, sh.rot, [236, 230, 216], false, shSx, shSy);
         ctx.globalAlpha = 1;
 
         if (sh.life >= sh.max || sh.x < -50 || sh.y > this.h + 50) this.shoots.splice(i, 1);
@@ -338,6 +361,8 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
       if (!still) {
         o.ang += o.spd * dt;
         o.rot += o.rspd * dt;
+        o.ax  += o.axs * dt;
+        o.ay  += o.ays * dt;
       }
       // Project onto tilted ellipse with precession
       const ex    = Math.cos(o.ang) * o.rr;
@@ -348,9 +373,10 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
       const depth = 0.55 + 0.45 * Math.sin(o.ang);          // front side → brighter/bigger
       const x     = this.ocx + rx + this.px * 8;
       const y     = this.ocy + ry + this.py * 8;
+      const oSx   = Math.cos(o.ay); const oSy = Math.cos(o.ax);
 
       ctx.globalAlpha = 0.35 + 0.65 * depth;
-      this.drawStar(ctx, x, y, o.size * (0.7 + 0.6 * depth), o.rot, o.c, false);
+      this.drawStar(ctx, x, y, o.size * (0.7 + 0.6 * depth), o.rot, o.c, false, oSx, oSy);
       ctx.globalAlpha = 1;
     }
 
@@ -365,10 +391,13 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         if (g.y < -g.R * 3) g.y = this.h + g.R * 3;
         if (g.y > this.h + g.R * 3) g.y = -g.R * 3;
         g.rot += g.rspd * dt;
+        g.ax  += g.axs * dt;
+        g.ay  += g.ays * dt;
       }
       const drawX = g.x + this.px * g.depth * 22;
       const drawY = g.y + this.py * g.depth * 22;
-      this.drawStar(ctx, drawX, drawY, g.R, g.rot, g.base, true);
+      const gSx   = Math.cos(g.ay); const gSy = Math.cos(g.ax);
+      this.drawStar(ctx, drawX, drawY, g.R, g.rot, g.base, true, gSx, gSy);
     }
   }
 }
