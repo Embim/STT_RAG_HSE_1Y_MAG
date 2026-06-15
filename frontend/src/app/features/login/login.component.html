@@ -1,4 +1,11 @@
 <section class="login">
+  <div class="login-mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#e3b341" stroke-width="1.5">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 12 15.5 8.5 13.5 14 8.5 15.5 10.5 10z" fill="#6fc6cf" stroke="none"/>
+      <circle cx="12" cy="12" r="1.4" fill="#e3b341" stroke="none"/>
+    </svg>
+  </div>
   <h1>DS Navigator</h1>
   <p class="sub">Вход в систему</p>
   <input [(ngModel)]="username" (keydown.enter)="submit()" placeholder="Логин" autocomplete="username" />

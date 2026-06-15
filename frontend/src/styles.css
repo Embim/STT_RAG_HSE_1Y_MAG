@@ -1,1 +1,101 @@
-/* You can add global styles to this file, and also import other style files */
+/* ── Design system tokens ─────────────────────────────────── */
+:root {
+  --ink:        #0c0d11;
+  --ink-2:      #111319;
+  --surface:    #15171f;
+  --surface-2:  #1b1e28;
+  --line:       rgba(233,228,216,.10);
+  --line-2:     rgba(233,228,216,.18);
+  --bone:       #ece6d8;
+  --bone-dim:   #b7b0a1;
+  --muted:      #807a6d;
+  --amber:      #e3b341;
+  --amber-soft: rgba(227,179,65,.14);
+  --teal:       #6fc6cf;
+  --teal-soft:  rgba(111,198,207,.12);
+  --danger:     #e0795f;
+  --radius:     14px;
+  --maxw:       980px;
+}
+
+/* ── Reset ────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+/* ── Body ─────────────────────────────────────────────────── */
+body {
+  background: var(--ink);
+  color: var(--bone);
+  font-family: "Hanken Grotesk", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Atmosphere: radial glow ──────────────────────────────── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 78% 8%, rgba(227,179,65,.10), transparent 60%),
+    radial-gradient(55% 55% at 8% 92%, rgba(111,198,207,.09), transparent 60%),
+    linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
+}
+
+/* ── Atmosphere: grain overlay ────────────────────────────── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Headings ─────────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  font-family: "Fraunces", serif;
+  margin: 0;
+}
+
+/* ── Links ────────────────────────────────────────────────── */
+a { color: var(--teal); }
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--ink-2); }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Page-load reveal ─────────────────────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards;
+}
+@keyframes rise { to { opacity: 1; transform: none; } }
+
+/* ── Topographic contour (fixed, behind everything) ──────── */
+.bg-contour {
+  position: fixed;
+  z-index: -2;
+  pointer-events: none;
+  top: -22vh;
+  right: -18vw;
+  width: 75vw;
+  height: 75vw;
+  max-width: 1100px;
+  max-height: 1100px;
+  opacity: .5;
+  -webkit-mask-image: radial-gradient(circle at center, #000 35%, transparent 72%);
+          mask-image: radial-gradient(circle at center, #000 35%, transparent 72%);
+}
