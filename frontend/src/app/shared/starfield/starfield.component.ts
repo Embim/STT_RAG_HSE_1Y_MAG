@@ -206,7 +206,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     // ── stellated octahedron geometry (two-level dimple) ─────────────────────
     const tips: number[][] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
     const oct: number[][] = [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]];
-    const MID = 0.62;   // radius of the mid-edge ridge ring (octahedron edge-mid ≈0.707 → pulled in). TUNABLE
+    const MID = 0.5;    // radius of the mid-edge ridge ring (octahedron edge-mid ≈0.707 → pulled in). TUNABLE
     const DEEP = 0.34;  // radius of the deep face-center vertex. TUNABLE
     const V: number[][] = tips.map(t => t.slice());
     const F: number[][] = [];
