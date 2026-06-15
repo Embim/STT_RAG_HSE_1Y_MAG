@@ -1,0 +1,30 @@
+<section class="admin">
+  <h1>Управление доступом</h1>
+  <div class="card">
+    <h2>Выдать доступ</h2>
+    <div class="row">
+      <input [(ngModel)]="newUsername" placeholder="Логин" />
+      <input [(ngModel)]="newPassword" type="password" placeholder="Пароль" />
+      <select [(ngModel)]="newRole">
+        <option value="user">user</option>
+        <option value="admin">admin</option>
+      </select>
+      <button (click)="create()">Создать</button>
+    </div>
+    @if (ok()) { <p class="ok">{{ ok() }}</p> }
+    @if (error()) { <p class="err">{{ error() }}</p> }
+  </div>
+  <h2>Пользователи</h2>
+  <table>
+    <tr><th>Логин</th><th>Роль</th><th>Активен</th><th></th></tr>
+    @for (u of users(); track u.username) {
+      <tr>
+        <td>{{ u.username }}</td><td>{{ u.role }}</td><td>{{ u.is_active ? 'да' : 'нет' }}</td>
+        <td>
+          @if (u.is_active) { <button (click)="setActive(u, false)">отключить</button> }
+          @else { <button (click)="setActive(u, true)">включить</button> }
+        </td>
+      </tr>
+    }
+  </table>
+</section>

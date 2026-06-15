@@ -1,1 +1,10 @@
+@if (auth.isAuthenticated()) {
+  <header class="topbar">
+    <a routerLink="/" class="brand">DS Navigator</a>
+    <span class="spacer"></span>
+    @if (auth.isAdmin()) { <a routerLink="/admin">Доступы</a> }
+    <span class="who">{{ auth.user()?.username }}</span>
+    <button (click)="logout()">Выйти</button>
+  </header>
+}
 <router-outlet />
