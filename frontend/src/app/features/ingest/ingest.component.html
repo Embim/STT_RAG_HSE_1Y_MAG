@@ -1,0 +1,52 @@
+<section class="wrap">
+  <h1>Добавить лекцию</h1>
+  <p class="lede">Загрузите видео — система транскрибирует и проиндексирует его для поиска.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>YouTube / Vimeo</h2>
+      <input class="in" [(ngModel)]="ytUrl" (keydown.enter)="submitYoutube()" placeholder="https://www.youtube.com/watch?v=… или /playlist?list=…" />
+      <div class="opts">
+        <label><input type="checkbox" [(ngModel)]="ytTxt" /> .txt</label>
+        <label><input type="checkbox" [(ngModel)]="ytJson" /> .json (сегменты)</label>
+        <label><input type="checkbox" [(ngModel)]="ytKeepAudio" /> хранить аудио</label>
+        <label><input type="checkbox" [(ngModel)]="ytKeepVideo" /> хранить видео</label>
+      </div>
+      <button (click)="submitYoutube()" [disabled]="busy() || !ytUrl.trim()">Загрузить</button>
+    </div>
+
+    <div class="card">
+      <h2>Загрузка файлов</h2>
+      <input class="file" type="file" multiple accept="video/*,audio/*" (change)="onFiles($event)" />
+      <div class="opts">
+        <label><input type="checkbox" [(ngModel)]="upTxt" /> .txt</label>
+        <label><input type="checkbox" [(ngModel)]="upJson" /> .json (сегменты)</label>
+        <label><input type="checkbox" [(ngModel)]="upKeepAudio" /> хранить аудио</label>
+      </div>
+      <button (click)="submitUpload()" [disabled]="busy() || !files.length">Транскрибировать</button>
+      @if (busy() && uploadPct() > 0 && uploadPct() < 100) {
+        <div class="bar"><div class="fill" [style.width.%]="uploadPct()"></div></div>
+        <p class="mono">отправка файла: {{ uploadPct() }}%</p>
+      }
+    </div>
+  </div>
+
+  @if (error()) { <p class="err">{{ error() }}</p> }
+
+  @if (job(); as j) {
+    <div class="job">
+      <div class="job-head">
+        <span class="mono">статус: {{ j.status }}</span>
+        @if (j.total_items) { <span class="mono">{{ j.done_items }}/{{ j.total_items }}</span> }
+        <span class="mono amber">{{ j.progress }}%</span>
+      </div>
+      <div class="bar"><div class="fill" [style.width.%]="j.progress"></div></div>
+      @if (j.current_item) { <p class="mono dim">⏳ {{ j.current_item }}</p> }
+      @if (j.status === 'done') {
+        <p class="ok">✅ Готово: {{ j.done_items }} материал(ов){{ j.error_count ? ', ошибок: ' + j.error_count : '' }}</p>
+      }
+      @if (j.status === 'error') { <p class="err">❌ {{ j.detail }}</p> }
+      @for (er of j.errors; track $index) { <p class="err">❌ {{ er.url || er.filename }}: {{ er.error }}</p> }
+    </div>
+  }
+</section>

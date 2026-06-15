@@ -38,3 +38,18 @@ export interface AuthCheckResponse {
   gate: boolean;
   ok: boolean;
 }
+
+export interface IngestJob {
+  job_id: string;
+  status: 'queued' | 'running' | 'done' | 'error';
+  progress: number;
+  total_items: number;
+  done_items: number;
+  current_item: string | null;
+  items: any[];
+  errors: { url?: string; filename?: string; error: string }[];
+  error_count: number;
+  detail?: string | null;
+}
+
+export interface JobAccepted { job_id: string; status: string; }
