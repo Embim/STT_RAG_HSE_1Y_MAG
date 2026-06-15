@@ -22,7 +22,7 @@
 
 3. **Порты пробрасованы через роутеры и открыты в файерволе**
    - Выполнены шаги из [docs/runbook-network.md](runbook-network.md): STEP 1–4.
-   - Тест с мобильного (STEP 5) пройден — порты 80, 443 и 51820 доступны снаружи.
+   - Тест с мобильного (STEP 5) пройден — порты 80 и 443 доступны снаружи.
 
 ---
 
@@ -50,10 +50,6 @@ DOMAIN=your-domain.ru
 CERTBOT_EMAIL=you@example.com
 STAGING=0
 USE_LOCAL_CA=
-
-# ── WireGuard ────────────────────────────────────────────────────────────────
-WG_HOST=your-domain.ru
-WG_PASSWORD=<пароль wg-easy UI>
 ```
 
 > `USE_LOCAL_CA=` (пустое без дефолта) — именно так отключается самоподписанный
@@ -114,7 +110,6 @@ docker compose `
   --profile emb `
   --profile asr-whisper `
   --profile web `
-  --profile vpn `
   up -d --build
 ```
 
@@ -123,7 +118,6 @@ docker compose `
 - `emb` — Infinity/FRIDA (эмбеддинги, GPU)
 - `asr-whisper` — Whisper (транскрипция, GPU)
 - `web` — API (FastAPI) + nginx (TLS + фронт) + auth-postgres
-- `vpn` — wg-easy (WireGuard VPN)
 
 > **Опционально: выбор ASR-модели прямо из UI с авто-свапом.** Если хотите, чтобы
 > пользователь мог выбирать модель распознавания при загрузке (а API сам
@@ -189,36 +183,27 @@ uv run python -m downloader.ingest --from-dir data/transcripts/recsys
 
 ---
 
-## Доступ к внутренним инструментам через WireGuard
+## Доступ к внутренним инструментам (локально)
 
-После подключения к WireGuard-туннелю (клиентский конфиг — в wg-easy UI по
-`http://127.0.0.1:51821`, доступен с ПК или через SSH port-forward) будут
-доступны:
+Дашборды не публикуются в интернет — их порты не пробрасываются через роутеры и
+не проксируются nginx. Доступ к ним — **только локально** на самой машине (или в
+домашней LAN):
 
-| Инструмент | Адрес (через туннель) |
-|-----------|----------------------|
-| wg-easy UI | `http://127.0.0.1:51821` (loopback ПК, не через туннель) |
-| Weaviate console | `http://<pc-lan-ip>:8080` |
-| Langfuse | `http://<pc-lan-ip>:3000` |
-| MLflow | `http://<pc-lan-ip>:5001` |
-| Grafana | `http://<pc-lan-ip>:3001` |
-| Airflow | `http://<pc-lan-ip>:8081` |
+| Инструмент | Адрес на ПК |
+|-----------|-------------|
+| Weaviate console | `http://localhost:8080` |
+| Langfuse | `http://localhost:3000` |
+| MLflow | `http://localhost:5001` |
+| Grafana | `http://localhost:3001` |
+| Airflow | `http://localhost:8081` |
 
-> `<pc-lan-ip>` — LAN-адрес ПК (напр. `192.168.1.10`). Через туннель VPN-клиент
-> попадает в `rag-net` и может достучаться до этих портов напрямую.
+> Снаружи доступны только порты 80 и 443 (сайт). Эти дашборды слушают на ПК и
+> видны в домашней LAN, но недостижимы из интернета.
 >
-> **Ни один из этих адресов не публикуется в интернет.** Снаружи доступны только
-> порты 80, 443 (сайт) и 51820/UDP (WireGuard).
-
-**Первый клиент WireGuard: bootstrap-проблема**
-
-wg-easy UI доступен по loopback `http://127.0.0.1:51821` только с самого ПК.
-Создайте первый клиентский профиль одним из способов:
-- Откройте браузер на ПК и перейдите на `http://127.0.0.1:51821`.
-- С удалённой машины: `ssh -L 51821:localhost:51821 user@<pc-ip>`, затем
-  откройте `http://127.0.0.1:51821` в локальном браузере.
-
-После создания клиента и успешного рукопожатия — доступ через туннель к LAN-ресурсам.
+> Нужен удалённый доступ к ним? Добавьте отдельный приватный канал — например
+> [Tailscale](https://tailscale.com) (mesh-VPN без проброса портов) или
+> `ssh -L 3001:localhost:3001 user@<pc>` (туннель к нужному порту). Публиковать
+> эти порты на белый IP — нельзя.
 
 ---
 
@@ -227,13 +212,12 @@ wg-easy UI доступен по loopback `http://127.0.0.1:51821` только 
 Выполните **до** того как поделиться URL:
 
 - [ ] **CGNAT**: белый IP R1 совпадает с `api.ipify.org` — проброс работает.
-- [ ] **Только 3 порта наружу**: 80/tcp, 443/tcp, 51820/udp. Ничего больше.
+- [ ] **Только 2 порта наружу**: 80/tcp, 443/tcp. Ничего больше.
 - [ ] **Дашборды не опубликованы**: порты Langfuse (3000), MLflow (5001),
       Grafana (3001), Airflow (8081), Weaviate (8080) не пробрасываются через
-      роутеры и не публикуются в `docker-compose.yml` без привязки к loopback.
-      Профили `langfuse`, `mlflow`, `airflow`, `monitoring` поднимаются только
-      для локальной работы — доступ через WireGuard.
-- [ ] **Пароли изменены**: `WG_PASSWORD`, `ADMIN_PASSWORD`, `AUTH_DB_PASSWORD`
+      роутеры и не проксируются nginx. Профили `langfuse`, `mlflow`, `airflow`,
+      `monitoring` поднимаются только для локальной работы.
+- [ ] **Пароли изменены**: `ADMIN_PASSWORD`, `AUTH_DB_PASSWORD`
       — не дефолтные значения.
 - [ ] **JWT_SECRET установлен**: не пустая строка, не `dev-insecure-change-me`.
 - [ ] **TLS боевой**: `STAGING=0`, `USE_LOCAL_CA=` (пусто), сертификат выпущен
@@ -263,7 +247,7 @@ wg-easy UI доступен по loopback `http://127.0.0.1:51821` только 
 
 ```powershell
 git pull
-docker compose --profile vdb --profile emb --profile asr-whisper --profile web --profile vpn up -d --build
+docker compose --profile vdb --profile emb --profile asr-whisper --profile web up -d --build
 ```
 
 ### Просмотр логов
@@ -271,14 +255,13 @@ docker compose --profile vdb --profile emb --profile asr-whisper --profile web -
 ```powershell
 docker compose logs -f api          # API FastAPI
 docker compose logs -f ds-navigator-nginx  # nginx + certbot
-docker compose logs -f wg-easy      # WireGuard
 ```
 
 ### Остановка
 
 ```powershell
-docker compose --profile vdb --profile emb --profile asr-whisper --profile web --profile vpn down
+docker compose --profile vdb --profile emb --profile asr-whisper --profile web down
 ```
 
 Данные сохраняются в именованных томах (`weaviate-data`, `letsencrypt`,
-`auth-postgres-data`, `wg-easy-data`).
+`auth-postgres-data`).
