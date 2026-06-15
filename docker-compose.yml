@@ -142,6 +142,37 @@ services:
       retries: 10
     <<: *shared-logs
 
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:15
+    container_name: wg-easy
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - vpn
+      - full
+    environment:
+      INIT_ENABLED: "true"
+      INIT_HOST: ${WG_HOST:-localhost}          # домен или белый IP — попадёт в Endpoint клиентских конфигов
+      INIT_PORT: "51820"
+      INIT_DNS: "1.1.1.1"
+      INIT_IPV4_CIDR: "10.8.0.0/24"
+      # INIT_IPV6_CIDR умышленно НЕ задан: wg-easy v15 на WSL2 без ip6_tables в ядре
+      # падает при старте, если включён IPv6 (см. дизайн §8). Только IPv4.
+      INIT_PASSWORD: ${WG_PASSWORD:-changeme-admin}   # пароль веб-UI (применяется только при первом старте)
+    ports:
+      - "51820:51820/udp"                       # пробрось на ОБОИХ роутерах
+      - "127.0.0.1:51821:51821/tcp"             # веб-UI — ТОЛЬКО loopback, наружу НЕ публиковать
+    volumes:
+      - wg-easy-data:/etc/wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    <<: *shared-logs
+
   nginx:
     build:
       context: .
@@ -1044,6 +1075,7 @@ services:
     <<: *shared-logs
 
 volumes:
+  wg-easy-data:
   auth-postgres-data:
   weaviate-data:
   langfuse-postgres-data:
