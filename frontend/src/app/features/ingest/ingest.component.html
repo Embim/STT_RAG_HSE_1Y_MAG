@@ -10,7 +10,7 @@
         <label><input type="checkbox" [(ngModel)]="ytTxt" /> .txt</label>
         <label><input type="checkbox" [(ngModel)]="ytJson" /> .json (сегменты)</label>
         <label><input type="checkbox" [(ngModel)]="ytKeepAudio" /> хранить аудио</label>
-        <label><input type="checkbox" [(ngModel)]="ytKeepVideo" /> хранить видео</label>
+        <label><input type="checkbox" [(ngModel)]="ytUseOcr" /> текст с экрана (OCR)</label>
       </div>
       <button (click)="submitYoutube()" [disabled]="busy() || !ytUrl.trim()">Загрузить</button>
     </div>
@@ -22,6 +22,7 @@
         <label><input type="checkbox" [(ngModel)]="upTxt" /> .txt</label>
         <label><input type="checkbox" [(ngModel)]="upJson" /> .json (сегменты)</label>
         <label><input type="checkbox" [(ngModel)]="upKeepAudio" /> хранить аудио</label>
+        <label><input type="checkbox" [(ngModel)]="upUseOcr" /> текст с экрана (OCR)</label>
       </div>
       <button (click)="submitUpload()" [disabled]="busy() || !files.length">Транскрибировать</button>
       @if (busy() && uploadPct() > 0 && uploadPct() < 100) {

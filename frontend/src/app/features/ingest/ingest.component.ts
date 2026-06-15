@@ -17,10 +17,10 @@ export class IngestComponent implements OnDestroy {
 
   // youtube
   ytUrl = '';
-  ytTxt = false; ytJson = false; ytKeepAudio = false; ytKeepVideo = false;
+  ytTxt = false; ytJson = false; ytKeepAudio = false; ytUseOcr = false;
   // upload
   files: File[] = [];
-  upTxt = false; upJson = false; upKeepAudio = false;
+  upTxt = false; upJson = false; upKeepAudio = false; upUseOcr = false;
   uploadPct = signal(0);
 
   busy = signal(false);
@@ -33,7 +33,7 @@ export class IngestComponent implements OnDestroy {
     if (!url || this.busy()) return;
     this.reset();
     this.busy.set(true);
-    this.api.ingestYoutube({ url, export_txt: this.ytTxt, export_json: this.ytJson, keep_video: this.ytKeepVideo, keep_audio: this.ytKeepAudio }).subscribe({
+    this.api.ingestYoutube({ url, export_txt: this.ytTxt, export_json: this.ytJson, use_ocr: this.ytUseOcr, keep_audio: this.ytKeepAudio }).subscribe({
       next: (r) => { this.busy.set(false); this.startPolling(r.job_id); },
       error: (e) => { this.busy.set(false); this.error.set(e?.status === 400 ? 'Недопустимый URL (разрешены YouTube/Vimeo)' : (e?.error?.detail ?? 'Ошибка запроса')); },
     });
@@ -49,7 +49,7 @@ export class IngestComponent implements OnDestroy {
     this.reset();
     this.busy.set(true);
     this.uploadPct.set(0);
-    this.api.ingestUpload(this.files, { export_txt: this.upTxt, export_json: this.upJson, keep_audio: this.upKeepAudio }).subscribe({
+    this.api.ingestUpload(this.files, { export_txt: this.upTxt, export_json: this.upJson, keep_audio: this.upKeepAudio, use_ocr: this.upUseOcr }).subscribe({
       next: (ev) => {
         if (ev.type === HttpEventType.UploadProgress && ev.total) {
           this.uploadPct.set(Math.round(100 * ev.loaded / ev.total));
