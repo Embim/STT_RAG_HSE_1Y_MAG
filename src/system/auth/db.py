@@ -5,18 +5,20 @@ from settings import settings
 _engine = None
 
 
-def _db_path() -> str:
-    if settings.AUTH_DB_PATH:
-        return settings.AUTH_DB_PATH
-    return str(Path(__file__).resolve().parents[3] / "auth" / "users.db")
+def _db_url() -> str:
+    if settings.AUTH_DATABASE_URL:
+        return settings.AUTH_DATABASE_URL
+    path = settings.AUTH_DB_PATH or str(Path(__file__).resolve().parents[3] / "auth" / "users.db")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{path}"
 
 
 def get_engine():
     global _engine
     if _engine is None:
-        path = _db_path()
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        _engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+        url = _db_url()
+        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        _engine = create_engine(url, connect_args=connect_args, pool_pre_ping=True)
     return _engine
 
 

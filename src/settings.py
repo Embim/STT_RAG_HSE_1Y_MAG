@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 720                # 12h
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = ""                      # set in .env -> admin auto-created on startup
+    AUTH_DATABASE_URL: str = ""                   # set (e.g. postgresql+psycopg2://...) → Postgres; empty → sqlite at AUTH_DB_PATH
     AUTH_DB_PATH: str = ""                        # empty -> <repo>/auth/users.db
 
     class Config:

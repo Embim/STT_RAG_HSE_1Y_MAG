@@ -112,12 +112,34 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me-in-dotenv!}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      AUTH_DB_PATH: /app/auth/users.db
-    volumes:
-      - auth-data:/app/auth
+      AUTH_DATABASE_URL: postgresql+psycopg2://authuser:${AUTH_DB_PASSWORD:-authpass}@auth-postgres:5432/authdb
     depends_on:
       weaviate:
         condition: service_healthy
+      auth-postgres:
+        condition: service_healthy
+    <<: *shared-logs
+
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: auth-postgres
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - web
+      - full
+    environment:
+      POSTGRES_USER: authuser
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-authpass}
+      POSTGRES_DB: authdb
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "authuser"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     <<: *shared-logs
 
   nginx:
@@ -1022,7 +1044,7 @@ services:
     <<: *shared-logs
 
 volumes:
-  auth-data:
+  auth-postgres-data:
   weaviate-data:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
