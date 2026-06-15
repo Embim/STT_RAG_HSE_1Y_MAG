@@ -13,6 +13,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1000 appuser
+RUN mkdir -p /app/auth && chown -R appuser:appuser /app/auth
+ENV AUTH_DB_PATH=/app/auth/users.db
 COPY --from=builder --chown=appuser:appuser /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

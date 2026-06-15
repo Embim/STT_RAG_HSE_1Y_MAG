@@ -218,3 +218,4 @@ volumes/
 hf_cache/
 # External third-party repos cloned by scripts/preload_asr_backends.py
 vendor/
+auth/
