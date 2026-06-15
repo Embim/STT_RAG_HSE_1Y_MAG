@@ -195,7 +195,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  // ── drawStar3D: software-rendered 3D 5-pointed star bipyramid ───────────────
+  // ── drawStar3D: software-rendered 3D stellated (dimpled) octahedron ─────────
   private drawStar3D(
     ctx: CanvasRenderingContext2D,
     cx: number, cy: number,
@@ -203,28 +203,31 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     rx: number, ry: number, rz: number,
     base: number[],
   ): void {
-    // ── star bipyramid geometry ──────────────────────────────────────────────
-    const POINTS = 5;
-    const INNER  = 0.42;   // inner radius ratio — smaller = sharper points
-    const DEPTH  = 0.40;   // half-thickness for front/back apex, relative to outer radius 1
+    // ── stellated octahedron geometry ────────────────────────────────────────
+    const TIP   = 1.0;
+    const INSET = 0.40;  // distance of per-face inset vertex from origin.
+                         // < 0.577 (natural oct face dist) → concave dimple. TUNABLE.
 
-    // 2*POINTS perimeter vertices in the z=0 plane: alternating outer(1)/inner(INNER)
-    // starting at the top (–π/2) so a tip points straight up at rest
-    const V: number[][] = [];
-    for (let i = 0; i < 2 * POINTS; i++) {
-      const a   = (i * Math.PI / POINTS) - Math.PI / 2;
-      const rad = i % 2 === 0 ? 1 : INNER;
-      V.push([Math.cos(a) * rad, Math.sin(a) * rad, 0]);
-    }
-    const FRONT = V.length; V.push([0, 0,  DEPTH]);   // front apex
-    const BACK  = V.length; V.push([0, 0, -DEPTH]);   // back apex
-
-    // Each perimeter edge i→j forms one front triangle and one back triangle
+    const tips: number[][] = [
+      [ TIP,   0,   0], [-TIP,   0,   0],
+      [   0, TIP,   0], [   0, -TIP,   0],
+      [   0,   0, TIP], [   0,   0, -TIP],
+    ];
+    // 8 octahedron faces (one per octant), each as index triple into tips[]
+    const oct: number[][] = [
+      [0,2,4],[2,1,4],[1,3,4],[3,0,4],
+      [2,0,5],[1,2,5],[3,1,5],[0,3,5],
+    ];
+    const V: number[][] = tips.map(t => t.slice());
     const F: number[][] = [];
-    for (let i = 0; i < 2 * POINTS; i++) {
-      const j = (i + 1) % (2 * POINTS);
-      F.push([FRONT, i, j]);   // front face (winding: apex, then ccw perimeter edge)
-      F.push([BACK,  j, i]);   // back face  (reversed winding)
+    for (const fc of oct) {
+      const a = tips[fc[0]], b = tips[fc[1]], c = tips[fc[2]];
+      const sx = a[0]+b[0]+c[0], sy = a[1]+b[1]+c[1], sz = a[2]+b[2]+c[2];
+      const L  = Math.hypot(sx, sy, sz) || 1;
+      const m  = [sx/L*INSET, sy/L*INSET, sz/L*INSET]; // face-center vertex pulled toward origin
+      const mi = V.length; V.push(m);
+      // split flat face into 3 triangles meeting at the inset center → concave dimple
+      F.push([fc[0], fc[1], mi], [fc[1], fc[2], mi], [fc[2], fc[0], mi]);
     }
 
     // ── rotation matrix & perspective projection ─────────────────────────────
@@ -251,10 +254,10 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     halo.addColorStop(1, `rgba(${base[0]},${base[1]},${base[2]},0)`);
     ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0,0,R*2.0,0,Math.PI*2); ctx.fill();
 
-    // subtle radiant glints from the 5 outer tips (even-indexed perimeter verts)
-    for (let i = 0; i < 2 * POINTS; i += 2) {
+    // radiant glow spikes from the 6 octahedron axis tips (V[0..5])
+    for (let i = 0; i < 6; i++) {
       const tip = RV[i];
-      const tproj = proj([tip[0] * 1.5, tip[1] * 1.5, tip[2]]);
+      const tproj = proj([tip[0] * 1.7, tip[1] * 1.7, tip[2]]);
       const base0 = proj(tip);
       const facing = Math.max(0, (tip[2] + 1) / 2);                  // front-facing tips brighter
       const g = ctx.createLinearGradient(base0[0]*R, base0[1]*R, tproj[0]*R, tproj[1]*R);
