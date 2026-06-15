@@ -52,3 +52,9 @@ def test_inactive_user_cannot_authenticate(auth):
     auth.create_user("carol", "pw")
     auth.set_active("carol", False)
     assert auth.authenticate_user("carol", "pw") is None
+
+
+def test_long_password_does_not_crash(auth):
+    pw = "a" * 100  # > 72 bytes
+    auth.create_user("longpw", pw)
+    assert auth.authenticate_user("longpw", pw) is not None
