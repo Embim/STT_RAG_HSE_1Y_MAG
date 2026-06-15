@@ -3,7 +3,7 @@ import {
 } from '@angular/core';
 
 interface Star    { x: number; y: number; z: number; r: number; a: number; tw: number; ph: number; c: string; }
-interface Shoot   { x: number; y: number; vx: number; vy: number; life: number; max: number; len: number; rot: number; rspd: number; size: number; ax: number; ay: number; axs: number; ays: number; }
+interface Shoot   { x: number; y: number; vx: number; vy: number; life: number; max: number; len: number; rot: number; rspd: number; size: number; ax: number; ay: number; axs: number; ays: number; rx: number; ry: number; rz: number; rxs: number; rys: number; rzs: number; }
 interface Orbiter { rr: number; ang: number; spd: number; size: number; c: number[]; rot: number; rspd: number; inc: number; squash: number; tphase: number; ax: number; ay: number; axs: number; ays: number; }
 interface Gem     { x: number; y: number; vx: number; vy: number; R: number; rot: number; rspd: number; depth: number; base: number[]; ax: number; ay: number; axs: number; ays: number; }
 
@@ -168,6 +168,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     const x = fromTop ? Math.random() * this.w : this.w * (0.6 + Math.random() * 0.4);
     const y = fromTop ? -20 : Math.random() * this.h * 0.4;
     const sp = 0.5 + Math.random() * 0.4;
+    const rSign = () => Math.random() < 0.5 ? 1 : -1;
     this.shoots.push({
       x, y,
       vx: -(0.5 + Math.random() * 0.3) * sp,
@@ -176,12 +177,19 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
       max: 900 + Math.random() * 700,
       len: 120 + Math.random() * 120,
       rot:  0,
-      rspd: 0.004 + Math.random() * 0.004,   // 0.004..0.008 rad/ms
-      size: 4 + Math.random() * 2,            // 4..6 px
+      rspd: 0.004 + Math.random() * 0.004,
+      size: 4 + Math.random() * 2,            // 4..6 px → 3D head radius ≈ 7.6..11.4
       ax:   Math.random() * Math.PI * 2,
       ay:   Math.random() * Math.PI * 2,
-      axs:  (0.0009 + Math.random() * 0.0007) * (Math.random() < 0.5 ? 1 : -1),
-      ays:  (0.0009 + Math.random() * 0.0007) * (Math.random() < 0.5 ? 1 : -1),
+      axs:  (0.0009 + Math.random() * 0.0007) * rSign(),
+      ays:  (0.0009 + Math.random() * 0.0007) * rSign(),
+      // 3D rotation angles and per-axis spin speeds (rad/ms)
+      rx:  Math.random() * Math.PI * 2,
+      ry:  Math.random() * Math.PI * 2,
+      rz:  Math.random() * Math.PI * 2,
+      rxs: (0.0010 + Math.random() * 0.0016) * rSign(),
+      rys: (0.0010 + Math.random() * 0.0016) * rSign(),
+      rzs: (0.0010 + Math.random() * 0.0016) * rSign(),
     });
   }
 
@@ -287,6 +295,74 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     ctx.restore();
   }
 
+  // ── drawStar3D: software-rendered 3D octahedron gem with radiant spikes ─────
+  private drawStar3D(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number,
+    R: number,
+    rx: number, ry: number, rz: number,
+    base: number[],
+  ): void {
+    const V: number[][] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+    const F: number[][] = [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]];
+    const cax=Math.cos(rx),sax=Math.sin(rx),cay=Math.cos(ry),say=Math.sin(ry),caz=Math.cos(rz),saz=Math.sin(rz);
+    const rot = (p: number[]): number[] => {
+      let x=p[0],y=p[1],z=p[2];
+      let y1=y*cax - z*sax, z1=y*sax + z*cax; y=y1; z=z1;            // X rotation
+      let x1=x*cay + z*say, z2=-x*say + z*cay; x=x1; z=z2;            // Y rotation
+      let x2=x*caz - y*saz, y2=x*saz + y*caz; x=x2; y=y2;            // Z rotation
+      return [x,y,z];
+    };
+    const RV = V.map(rot);
+    const fdist = 3.4;                                                 // perspective camera distance
+    const proj = (p: number[]): number[] => { const s = fdist / (fdist - p[2]); return [p[0]*s, p[1]*s]; };
+    const light = [-0.40, -0.55, 0.73];                               // upper-left, toward viewer (≈unit)
+    const dot = (a: number[], b: number[]) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // soft round halo
+    const halo = ctx.createRadialGradient(0,0,0,0,0,R*2.0);
+    halo.addColorStop(0, `rgba(${base[0]},${base[1]},${base[2]},0.22)`);
+    halo.addColorStop(1, `rgba(${base[0]},${base[1]},${base[2]},0)`);
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0,0,R*2.0,0,Math.PI*2); ctx.fill();
+
+    // radiant spikes from the 6 vertices (projected — naturally foreshorten in 3D)
+    const SPIKE = 1.9;
+    for (let i=0;i<6;i++){
+      const tip = proj([RV[i][0]*SPIKE, RV[i][1]*SPIKE, RV[i][2]*SPIKE]);
+      const facing = (RV[i][2] + 1) / 2;                             // front spikes brighter
+      const g = ctx.createLinearGradient(0,0, tip[0]*R, tip[1]*R);
+      g.addColorStop(0, `rgba(255,250,240,${(0.5*facing+0.15).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${base[0]},${base[1]},${base[2]},0)`);
+      ctx.strokeStyle = g; ctx.lineWidth = 0.9; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(tip[0]*R, tip[1]*R); ctx.stroke();
+    }
+
+    // faces: outward normal, back-face cull, diffuse shade, draw front faces
+    for (const f of F) {
+      const a=RV[f[0]], b=RV[f[1]], c=RV[f[2]];
+      const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+      let n=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+      const nl=Math.hypot(n[0],n[1],n[2])||1; n=[n[0]/nl,n[1]/nl,n[2]/nl];
+      const cen=[(a[0]+b[0]+c[0])/3,(a[1]+b[1]+c[1])/3,(a[2]+b[2]+c[2])/3];
+      if (dot(n,cen) < 0) n=[-n[0],-n[1],-n[2]];                     // orient outward
+      if (n[2] <= 0) continue;                                       // back-face cull (camera looks down +z)
+      const lit = 0.16 + 0.84 * Math.max(0, dot(n, light));
+      const pa=proj(a), pb=proj(b), pc=proj(c);
+      ctx.beginPath(); ctx.moveTo(pa[0]*R,pa[1]*R); ctx.lineTo(pb[0]*R,pb[1]*R); ctx.lineTo(pc[0]*R,pc[1]*R); ctx.closePath();
+      ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${lit.toFixed(3)})`;
+      ctx.fill();
+      ctx.lineWidth=0.4; ctx.strokeStyle=`rgba(255,250,240,${(lit*0.3).toFixed(3)})`; ctx.stroke();
+    }
+
+    // bright specular core
+    ctx.beginPath(); ctx.arc(0,0,R*0.16,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,250,240,0.95)'; ctx.fill();
+    ctx.restore();
+  }
+
   private draw(t: number, still: boolean): void {
     const dt  = this.last ? Math.min(t - this.last, 60) : 16;
     this.last = t;
@@ -333,10 +409,12 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         sh.x += sh.vx * dt; sh.y += sh.vy * dt;
         sh.rot += sh.rspd * dt;
         sh.ax += sh.axs * dt; sh.ay += sh.ays * dt;
+        // advance 3D rotation angles
+        sh.rx += sh.rxs * dt; sh.ry += sh.rys * dt; sh.rz += sh.rzs * dt;
 
         const p     = sh.life / sh.max;
         const alpha = Math.sin(Math.min(p, 1) * Math.PI) * 0.9;
-        // trail tail ends BEHIND the sparkle head
+        // trail tail ends BEHIND the 3D head
         const tx    = sh.x - sh.vx * sh.len / Math.hypot(sh.vx, sh.vy);
         const ty    = sh.y - sh.vy * sh.len / Math.hypot(sh.vx, sh.vy);
         const g     = ctx.createLinearGradient(sh.x, sh.y, tx, ty);
@@ -346,10 +424,9 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         ctx.strokeStyle = g; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(tx, ty); ctx.stroke();
 
-        // spinning sparkle head at the leading point
-        const shSx = Math.cos(sh.ay); const shSy = Math.cos(sh.ax);
+        // 3D rotating octahedron gem head at the leading point
         ctx.globalAlpha = alpha;
-        this.drawStar(ctx, sh.x, sh.y, sh.size, sh.rot, [236, 230, 216], false, shSx, shSy);
+        this.drawStar3D(ctx, sh.x, sh.y, (sh.size ?? 5) * 1.9, sh.rx, sh.ry, sh.rz, [236, 230, 216]);
         ctx.globalAlpha = 1;
 
         if (sh.life >= sh.max || sh.x < -50 || sh.y > this.h + 50) this.shoots.splice(i, 1);
