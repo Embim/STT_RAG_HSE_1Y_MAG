@@ -2,6 +2,13 @@ from typing import Optional
 from urllib.parse import urlparse
 from pydantic import BaseModel, Field, field_validator
 
+from system.asr_models import ASR_MODELS, DEFAULT_ASR_MODEL
+
+
+class EmbeddingLocateRequest(BaseModel):
+    question: str = Field(..., min_length=1, description="Запрос для проекции в карту эмбеддингов")
+    top_k: int = Field(5, ge=1, le=50, description="Сколько ближайших чанков подсветить")
+
 
 class ForwardRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Вопрос пользователя")
@@ -24,6 +31,10 @@ class IngestRequest(BaseModel):
     export_json: bool = Field(False, description="Save full transcript .json with segments/timestamps to data/transcripts/")
     keep_audio: bool = Field(False, description="Save extracted audio to data/audio/")
     use_ocr: bool = Field(False, description="Extract text from video using EasyOCR")
+    asr_model: str = Field(
+        DEFAULT_ASR_MODEL,
+        description="ASR model key (see GET /asr-models): whisper, qwen3, vibevoice, parakeet, ...",
+    )
 
     @field_validator("url")
     @classmethod
@@ -34,6 +45,16 @@ class IngestRequest(BaseModel):
         host = (parsed.hostname or "").lower()
         if host not in _ALLOWED_INGEST_HOSTS:
             raise ValueError("url host not allowed")
+        return v
+
+    @field_validator("asr_model")
+    @classmethod
+    def _validate_asr_model(cls, v: str) -> str:
+        model = ASR_MODELS.get(v)
+        if model is None:
+            raise ValueError(f"unknown asr_model '{v}'")
+        if not model.available:
+            raise ValueError(f"asr_model '{v}' is currently unavailable")
         return v
 
 

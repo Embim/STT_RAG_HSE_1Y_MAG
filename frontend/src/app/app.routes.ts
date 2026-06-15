@@ -6,5 +6,6 @@ export const routes: Routes = [
   { path: '', canActivate: [authGuard], loadComponent: () => import('./features/search/search.component').then(m => m.SearchComponent) },
   { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent) },
   { path: 'ingest', canActivate: [authGuard], loadComponent: () => import('./features/ingest/ingest.component').then(m => m.IngestComponent) },
+  { path: 'space', canActivate: [authGuard], loadComponent: () => import('./features/space/space.component').then(m => m.SpaceComponent) },
   { path: '**', redirectTo: '' },
 ];

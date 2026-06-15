@@ -24,6 +24,7 @@ except ImportError:
     extract_text_from_video = None
     merge_ocr_segments = None
 from processing.chunked_transcribe import ffprobe_metadata, transcribe_chunked
+from evaluation.asr.backends.http_asr import HttpASRBackend
 from processing.progress_tracker import video_run
 from processing.quality_signals import compute as compute_quality_signals
 from settings import settings
@@ -63,6 +64,8 @@ async def process_youtube(
     keep_audio: bool = False,
     use_ocr: bool = False,
     progress_cb: Callable[[dict], None] | None = None,
+    backend: HttpASRBackend | None = None,
+    asr_label: str | None = None,
 ) -> dict:
     """Download, transcribe and ingest a YouTube URL (video or playlist).
 
@@ -107,6 +110,8 @@ async def process_youtube(
                 keep_audio=keep_audio,
                 source_url=video_url,
                 video_path=video_path if use_ocr else None,
+                backend=backend,
+                asr_label=asr_label,
                 progress_cb=_chunk,
             )
             fractions[video_url] = 1.0
@@ -137,6 +142,8 @@ async def process_saved_uploads(
     keep_audio: bool = False,
     use_ocr: bool = False,
     progress_cb: Callable[[dict], None] | None = None,
+    backend: HttpASRBackend | None = None,
+    asr_label: str | None = None,
 ) -> dict:
     """Transcribe+ingest already-saved upload files. `saved` = [(path, original_filename)]."""
     items, errors = [], []
@@ -166,6 +173,7 @@ async def process_saved_uploads(
                     title=local_result.title, export_txt=export_txt, export_json=export_json,
                     keep_audio=keep_audio, source_url=None, source_file_name=filename,
                     video_path=path if use_ocr else None,
+                    backend=backend, asr_label=asr_label,
                     progress_cb=_chunk,
                 )
                 item["file_id"] = item.pop("doc_id")
@@ -196,6 +204,8 @@ async def transcribe_and_ingest(
     keep_audio: bool = False,
     parent_batch_run_id: str | None = None,
     video_path: str | None = None,
+    backend: HttpASRBackend | None = None,
+    asr_label: str | None = None,
     progress_cb: Callable[[int, int, dict], None] | None = None,
 ) -> dict:
     """Transcribe audio, ingest into vector store, optionally persist artifacts.
@@ -232,7 +242,7 @@ async def transcribe_and_ingest(
     with video_run(
         title=title,
         source_file_name=source_file_name,
-        asr_name=settings.ASR_NAME,
+        asr_name=asr_label or settings.ASR_NAME,
         audio_size_mb=audio_size_mb,
         chunk_minutes=chunk_minutes,
         extra_params=extra_params,
@@ -269,9 +279,10 @@ async def transcribe_and_ingest(
                     audio_path,
                     chunk_minutes=chunk_minutes,
                     progress_cb=_on_chunk,
+                    backend=backend,
                 )
             else:
-                transcript = await transcribe(audio_path)
+                transcript = await transcribe(audio_path, backend=backend)
                 run.log_progress(100.0, step=1)
                 if progress_cb:
                     progress_cb(1, 1, {})
@@ -364,7 +375,7 @@ async def transcribe_and_ingest(
                 "title": title,
                 "source_url": source_url,
                 "source_file_name": source_file_name,
-                "asr_name": settings.ASR_NAME,
+                "asr_name": asr_label or settings.ASR_NAME,
                 "language": transcript.get("language"),
                 "text": text,
                 "segments": segments,

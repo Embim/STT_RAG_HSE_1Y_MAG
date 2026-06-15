@@ -13,16 +13,20 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from settings import settings
 from system.rag.pipeline import run
 from system.llm.llm_services import get_chat_vectore_store_manager
 from system.tracing import flush as langfuse_flush
 from downloader.processor import process_youtube, process_saved_uploads
-from api.schemas import ForwardRequest, IngestRequest
+from api.schemas import ForwardRequest, IngestRequest, EmbeddingLocateRequest
+from system.embedding_map import build_map, locate as locate_in_map, reset_cache as reset_map_cache
 from system.auth.deps import get_current_user
 from system.auth.models import User
 from system.auth.service import ensure_admin
 from api.auth_routes import router as auth_router
 from system.ingest_jobs import create_job, update_job, get_job
+from system.asr_models import ASR_MODELS, DEFAULT_ASR_MODEL, get_model, list_models
+from system.asr_manager import asr_manager
 
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB per file
 
@@ -93,33 +97,43 @@ async def check_vdb(user: User = Depends(get_current_user)):
 async def _run_youtube_job(job_id: str, req: IngestRequest) -> None:
     update_job(job_id, status="running")
     try:
-        res = await process_youtube(
-            url=req.url, export_txt=req.export_txt,
-            export_json=req.export_json, keep_audio=req.keep_audio,
-            use_ocr=req.use_ocr,
-            progress_cb=lambda u: update_job(job_id, **u),
-        )
+        model = get_model(req.asr_model)
+        async with asr_manager.session(
+            req.asr_model, status_cb=lambda m: update_job(job_id, detail=m)
+        ) as backend:
+            res = await process_youtube(
+                url=req.url, export_txt=req.export_txt,
+                export_json=req.export_json, keep_audio=req.keep_audio,
+                use_ocr=req.use_ocr, backend=backend, asr_label=model.name,
+                progress_cb=lambda u: update_job(job_id, **u),
+            )
         update_job(job_id, status="done", progress=100.0, items=res["items"],
                    errors=res["errors"], error_count=res["error_count"],
                    done_items=res["ingested_count"],
                    total_items=res["ingested_count"] + res["error_count"])
+        reset_map_cache()  # в БД новые чанки → карта тем устарела
     except Exception as e:
         logger.exception("ingest job %s failed: %s", job_id, e)
         update_job(job_id, status="error", detail=str(e))
 
 
-async def _run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio, use_ocr) -> None:
+async def _run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio, use_ocr, asr_model) -> None:
     update_job(job_id, status="running")
     try:
-        res = await process_saved_uploads(
-            saved, export_txt=export_txt, export_json=export_json, keep_audio=keep_audio,
-            use_ocr=use_ocr,
-            progress_cb=lambda u: update_job(job_id, **u),
-        )
+        model = get_model(asr_model)
+        async with asr_manager.session(
+            asr_model, status_cb=lambda m: update_job(job_id, detail=m)
+        ) as backend:
+            res = await process_saved_uploads(
+                saved, export_txt=export_txt, export_json=export_json, keep_audio=keep_audio,
+                use_ocr=use_ocr, backend=backend, asr_label=model.name,
+                progress_cb=lambda u: update_job(job_id, **u),
+            )
         update_job(job_id, status="done", progress=100.0, items=res["items"],
                    errors=res["errors"], error_count=res["error_count"],
                    done_items=res["ingested_count"],
                    total_items=res["ingested_count"] + res["error_count"])
+        reset_map_cache()  # в БД новые чанки → карта тем устарела
     except Exception as e:
         logger.exception("upload job %s failed: %s", job_id, e)
         update_job(job_id, status="error", detail=str(e))
@@ -141,8 +155,12 @@ async def ingest_upload(
     export_json: bool = False,
     keep_audio: bool = False,
     use_ocr: bool = False,
+    asr_model: str = DEFAULT_ASR_MODEL,
     user: User = Depends(get_current_user),
 ):
+    model = ASR_MODELS.get(asr_model)
+    if model is None or not model.available:
+        raise HTTPException(status_code=400, detail=f"invalid asr_model '{asr_model}'")
     tmp_dir = tempfile.mkdtemp(prefix="ingest_up_")
     saved: list[tuple[str, str]] = []
     for f in files:
@@ -162,7 +180,7 @@ async def ingest_upload(
                 out.write(chunk)
         saved.append((dest, name))
     job_id = create_job()
-    asyncio.create_task(_run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio, use_ocr))
+    asyncio.create_task(_run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio, use_ocr, asr_model))
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -172,6 +190,50 @@ async def ingest_status(job_id: str, user: User = Depends(get_current_user)):
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return {k: v for k, v in job.items() if k != "created_at"}
+
+
+@app.get("/asr-models", tags=["Ingest"])
+async def asr_models(user: User = Depends(get_current_user)):
+    """Каталог ASR-моделей для выпадающего списка на фронте.
+
+    `active` — какая модель сейчас поднята на GPU (если включён авто-свап;
+    иначе null). `autoswap` — включён ли авто-свап контейнеров.
+    """
+    return {
+        "models": list_models(),
+        "default": DEFAULT_ASR_MODEL,
+        "active": await asr_manager.active_model_key(),
+        "autoswap": settings.ASR_AUTOSWAP_ENABLED,
+    }
+
+
+@app.get("/embedding-map", tags=["Map"])
+async def embedding_map(force: bool = False, user: User = Depends(get_current_user)):
+    """3D-карта эмбеддингов («облако тем»): точки-чанки + авто-темы.
+
+    Тяжёлый расчёт (UMAP/KMeans) идёт в threadpool, чтобы не блокировать loop;
+    результат кэшируется до изменения корпуса (или force=true). Принудительная
+    пересборка дорогая, поэтому force доступен только админам.
+    """
+    if force and user.role != "admin":
+        force = False
+    try:
+        return await asyncio.to_thread(build_map, force)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ModuleNotFoundError as e:
+        raise HTTPException(status_code=501, detail=f"требуется scikit-learn: {e}")
+
+
+@app.post("/embedding-map/locate", tags=["Map"])
+async def embedding_map_locate(req: EmbeddingLocateRequest, user: User = Depends(get_current_user)):
+    """Спроецировать запрос в карту: id ближайших чанков + маркер запроса."""
+    try:
+        return await asyncio.to_thread(locate_in_map, req.question, req.top_k)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ModuleNotFoundError as e:
+        raise HTTPException(status_code=501, detail=f"требуется scikit-learn: {e}")
 
 
 @app.post("/forward", tags=["Usage"])

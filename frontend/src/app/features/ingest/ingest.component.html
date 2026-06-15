@@ -6,6 +6,19 @@
     <div class="card">
       <h2>YouTube / Vimeo</h2>
       <input class="in" [(ngModel)]="ytUrl" (keydown.enter)="submitYoutube()" placeholder="https://www.youtube.com/watch?v=… или /playlist?list=…" />
+      @if (asrModels().length) {
+        <label class="asr-label">Модель распознавания (ASR)</label>
+        <select class="in asr-select" [(ngModel)]="ytAsrModel">
+          @for (m of asrModels(); track m.key) {
+            <option [value]="m.key" [disabled]="!selectable(m)">
+              {{ m.label }}{{ m.recommended ? ' ★' : '' }} · {{ m.vram_gb }} ГБ · CS: {{ m.code_switch }}{{ m.available ? '' : ' — недоступна' }}
+            </option>
+          }
+        </select>
+        @if (modelInfo(ytAsrModel); as mi) { <p class="asr-when">{{ mi.when }}</p> }
+        @if (willSwap(ytAsrModel)) { <p class="asr-swap">⚠ Смена модели на GPU — первый запуск прогреется несколько минут.</p> }
+        @if (autoswapOff) { <p class="asr-when dim">Авто-свап выключен — доступна только активная модель. Остальные подсвечены серым.</p> }
+      }
       <div class="opts">
         <label><input type="checkbox" [(ngModel)]="ytTxt" /> .txt</label>
         <label><input type="checkbox" [(ngModel)]="ytJson" /> .json (сегменты)</label>
@@ -18,6 +31,19 @@
     <div class="card">
       <h2>Загрузка файлов</h2>
       <input class="file" type="file" multiple accept="video/*,audio/*" (change)="onFiles($event)" />
+      @if (asrModels().length) {
+        <label class="asr-label">Модель распознавания (ASR)</label>
+        <select class="in asr-select" [(ngModel)]="upAsrModel">
+          @for (m of asrModels(); track m.key) {
+            <option [value]="m.key" [disabled]="!selectable(m)">
+              {{ m.label }}{{ m.recommended ? ' ★' : '' }} · {{ m.vram_gb }} ГБ · CS: {{ m.code_switch }}{{ m.available ? '' : ' — недоступна' }}
+            </option>
+          }
+        </select>
+        @if (modelInfo(upAsrModel); as mi) { <p class="asr-when">{{ mi.when }}</p> }
+        @if (willSwap(upAsrModel)) { <p class="asr-swap">⚠ Смена модели на GPU — первый запуск прогреется несколько минут.</p> }
+        @if (autoswapOff) { <p class="asr-when dim">Авто-свап выключен — доступна только активная модель. Остальные подсвечены серым.</p> }
+      }
       <div class="opts">
         <label><input type="checkbox" [(ngModel)]="upTxt" /> .txt</label>
         <label><input type="checkbox" [(ngModel)]="upJson" /> .json (сегменты)</label>

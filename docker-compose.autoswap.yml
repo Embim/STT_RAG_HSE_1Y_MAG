@@ -1,0 +1,34 @@
+# Overlay: включает per-request авто-свап ASR-моделей.
+#
+# Монтирует /var/run/docker.sock в api-контейнер, чтобы он мог гасить/поднимать
+# контейнеры asr-* при выборе модели пользователем. Это даёт api-контейнеру
+# контроль над docker на хосте — ВКЛЮЧАЙ ТОЛЬКО на доверенной GPU-машine, где
+# сайт за логином с аккаунтами, выдаваемыми вручную.
+#
+# Менеджер (system/asr_manager.py) дёргает только команды start/stop/ps/inspect
+# и только над контейнерами из белого списка (asr-* из реестра) — не произвольный
+# docker exec, но сокет по своей природе = root на хосте, поэтому overlay opt-in.
+#
+# Порядок включения на GPU-боксе:
+#   1. Создать (НЕ запуская) контейнеры всех нужных моделей один раз:
+#        docker compose --profile asr-whisper --profile asr-qwen3 \
+#          --profile asr-parakeet --profile asr-vibevoice create
+#   2. Узнать GID docker-сокета:
+#        stat -c '%g' /var/run/docker.sock        # обычно 999 или 998
+#   3. Прописать в .env:
+#        ASR_AUTOSWAP_ENABLED=true
+#        DOCKER_GID=<gid из шага 2>
+#   4. Поднять стек с этим overlay:
+#        docker compose -f docker-compose.yml -f docker-compose.autoswap.yml \
+#          --profile full up -d
+#
+# Подробности и таблица «когда какую модель» — docs/asr_model_selection.md
+services:
+  api:
+    environment:
+      ASR_AUTOSWAP_ENABLED: "true"
+    # appuser (uid 1000) должен попасть в группу-владельца docker.sock.
+    group_add:
+      - "${DOCKER_GID:-999}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

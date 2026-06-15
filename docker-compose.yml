@@ -109,6 +109,11 @@ services:
       WEAVIATE_VECTORIZER_BASE_URL: http://infinity:7997
       WHISPER_URL: http://asr:8000
       SERVE_SPA: "false"
+      # Per-request выбор ASR-модели. По умолчанию false (выбор валидируется, но
+      # авто-свап контейнеров выключен). Чтобы включить — используй overlay
+      # docker-compose.autoswap.yml (монтирует docker.sock). Подробнее:
+      # docs/asr_model_selection.md
+      ASR_AUTOSWAP_ENABLED: "${ASR_AUTOSWAP_ENABLED:-false}"
       JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me-in-dotenv!}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

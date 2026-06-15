@@ -53,3 +53,56 @@ export interface IngestJob {
 }
 
 export interface JobAccepted { job_id: string; status: string; }
+
+export interface AsrModelInfo {
+  key: string;
+  model_id: string;
+  name: string;
+  endpoint: string;
+  language: string;
+  label: string;
+  vram_gb: number;
+  code_switch: string;
+  when: string;
+  available: boolean;
+  recommended: boolean;
+}
+
+export interface AsrModelsResponse {
+  models: AsrModelInfo[];
+  default: string;
+  active: string | null;
+  autoswap: boolean;
+}
+
+export interface EmbeddingPoint {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  cluster: number;
+  title: string;
+  source_url: string | null;
+  start: number | null;
+  snippet: string;
+}
+
+export interface EmbeddingTopic {
+  cluster: number;
+  label: string;
+  color: string;
+  size: number;
+}
+
+export interface EmbeddingMapResponse {
+  points: EmbeddingPoint[];
+  topics: EmbeddingTopic[];
+  count: number;
+  dims: number;
+  reducer: string;
+}
+
+export interface LocateResponse {
+  highlight_ids: string[];
+  marker: { x: number; y: number; z: number } | null;
+}
