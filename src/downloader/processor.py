@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import List
+from typing import Callable, List
 from urllib.parse import urlparse
 
 from fastapi import UploadFile
@@ -55,6 +55,7 @@ async def process_youtube(
     export_txt: bool,
     export_json: bool = False,
     keep_audio: bool = False,
+    progress_cb: Callable[[dict], None] | None = None,
 ) -> dict:
     """Download, transcribe and ingest a YouTube URL (video or playlist).
 
@@ -68,11 +69,28 @@ async def process_youtube(
     video_urls = await asyncio.to_thread(get_playlist_urls, url) if is_playlist else [url]
     logger.info("%s detected: %d video(s)", "Playlist" if is_playlist else "Video", len(video_urls))
 
+    total = len(video_urls)
+    fractions = {u: 0.0 for u in video_urls}
+
+    def _report(current: str | None = None) -> None:
+        if progress_cb:
+            overall = 100.0 * sum(fractions.values()) / max(1, total)
+            done = sum(1 for f in fractions.values() if f >= 1.0)
+            progress_cb({"total_items": total, "done_items": done,
+                         "progress": round(overall, 1), "current_item": current})
+
+    _report()
+
     sem = asyncio.Semaphore(settings.INGEST_CONCURRENCY)
 
     async def _process_one(video_url: str) -> dict:
         async with sem:
             audio_path, doc_id, title = await prepare_audio(video_url, keep_video)
+
+            def _chunk(idx: int, total_chunks: int, extra: dict) -> None:
+                fractions[video_url] = idx / max(1, total_chunks)
+                _report(title)
+
             item = await transcribe_and_ingest(
                 audio_path=audio_path,
                 doc_id=doc_id,
@@ -81,7 +99,10 @@ async def process_youtube(
                 export_json=export_json,
                 keep_audio=keep_audio,
                 source_url=video_url,
+                progress_cb=_chunk,
             )
+            fractions[video_url] = 1.0
+            _report(title)
             item["video_id"] = item.pop("doc_id")
             return item
 
@@ -101,6 +122,70 @@ async def process_youtube(
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
 
 
+def _save_uploads_sync(files, work_dir):
+    """(used by the sync wrapper) — write UploadFiles to work_dir, return [(path, filename)]."""
+    saved = []
+    for f in files:
+        name = Path(f.filename).name
+        p = Path(work_dir) / name
+        # NOTE: sync wrapper path; the async API endpoint streams uploads itself.
+        saved.append((str(p), name))
+    return saved
+
+
+async def process_saved_uploads(
+    saved: list[tuple[str, str]],
+    export_txt: bool,
+    export_json: bool = False,
+    keep_audio: bool = False,
+    progress_cb: Callable[[dict], None] | None = None,
+) -> dict:
+    """Transcribe+ingest already-saved upload files. `saved` = [(path, original_filename)]."""
+    items, errors = [], []
+    total = len(saved)
+    fractions = {p: 0.0 for p, _ in saved}
+
+    def _report(current: str | None = None) -> None:
+        if progress_cb:
+            overall = 100.0 * sum(fractions.values()) / max(1, total)
+            done = sum(1 for f in fractions.values() if f >= 1.0)
+            progress_cb({"total_items": total, "done_items": done,
+                         "progress": round(overall, 1), "current_item": current})
+
+    _report()
+    work_dir = tempfile.mkdtemp()
+    try:
+        for path, filename in saved:
+            try:
+                local_result = await asyncio.to_thread(extract_audio_from_video, path, work_dir)
+
+                def _chunk(idx: int, total_chunks: int, extra: dict, _p: str = path) -> None:
+                    fractions[_p] = idx / max(1, total_chunks)
+                    _report(filename)
+
+                item = await transcribe_and_ingest(
+                    audio_path=local_result.audio_path, doc_id=local_result.file_id,
+                    title=local_result.title, export_txt=export_txt, export_json=export_json,
+                    keep_audio=keep_audio, source_url=None, source_file_name=filename,
+                    progress_cb=_chunk,
+                )
+                item["file_id"] = item.pop("doc_id")
+                items.append(item)
+            except Exception as e:
+                logger.error("Failed to process file %s: %s", filename, e, exc_info=True)
+                errors.append({"filename": filename, "error": str(e)})
+            finally:
+                fractions[path] = 1.0
+                _report(filename)
+                try:
+                    Path(path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+    return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
+
+
 async def process_uploaded_files(
     files: List[UploadFile],
     export_txt: bool,
@@ -108,39 +193,21 @@ async def process_uploaded_files(
     keep_audio: bool = False,
 ) -> dict:
     """Save uploaded files, extract audio, transcribe and ingest each one."""
-    work_dir = tempfile.mkdtemp()
-    items, errors = [], []
-
+    tmp_dir = tempfile.mkdtemp()
+    saved: list[tuple[str, str]] = []
     try:
         for upload_file in files:
-            raw_path = Path(work_dir) / upload_file.filename
-            try:
-                raw_path.write_bytes(await upload_file.read())
-                local_result = await asyncio.to_thread(extract_audio_from_video, str(raw_path), work_dir)
-                try:
-                    raw_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-
-                item = await transcribe_and_ingest(
-                    audio_path=local_result.audio_path,
-                    doc_id=local_result.file_id,
-                    title=local_result.title,
-                    export_txt=export_txt,
-                    export_json=export_json,
-                    keep_audio=keep_audio,
-                    source_url=None,
-                    source_file_name=upload_file.filename,
-                )
-                item["file_id"] = item.pop("doc_id")
-                items.append(item)
-            except Exception as e:
-                logger.error("Failed to process file %s: %s", upload_file.filename, e, exc_info=True)
-                errors.append({"filename": upload_file.filename, "error": str(e)})
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
-
-    return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
+            name = Path(upload_file.filename).name
+            dest = str(Path(tmp_dir) / name)
+            data = await upload_file.read()
+            Path(dest).write_bytes(data)
+            saved.append((dest, upload_file.filename))
+        return await process_saved_uploads(
+            saved, export_txt=export_txt, export_json=export_json, keep_audio=keep_audio,
+        )
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
 
 
 async def transcribe_and_ingest(
@@ -153,6 +220,7 @@ async def transcribe_and_ingest(
     export_json: bool = False,
     keep_audio: bool = False,
     parent_batch_run_id: str | None = None,
+    progress_cb: Callable[[int, int, dict], None] | None = None,
 ) -> dict:
     """Transcribe audio, ingest into vector store, optionally persist artifacts.
 
@@ -216,6 +284,8 @@ async def transcribe_and_ingest(
                         run.log_metric("chunk_chars", extra["chunk_chars"], step=idx)
                     if "chunk_chars_per_sec" in extra:
                         run.log_metric("chunk_chars_per_sec", extra["chunk_chars_per_sec"], step=idx)
+                if progress_cb:
+                    progress_cb(idx, total, extra)
 
             run.log_progress(0.0, step=0)
             if chunk_minutes > 0:
@@ -227,6 +297,8 @@ async def transcribe_and_ingest(
             else:
                 transcript = await transcribe(audio_path)
                 run.log_progress(100.0, step=1)
+                if progress_cb:
+                    progress_cb(1, 1, {})
             text = transcript["text"]
             segments = transcript.get("segments", [])
             logger.info("Transcription done: %s — %d chars, %d segments", title, len(text), len(segments))

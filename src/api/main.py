@@ -1,5 +1,8 @@
+import asyncio
 import logging
 import os
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List
@@ -13,12 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from system.rag.pipeline import run
 from system.llm.llm_services import get_chat_vectore_store_manager
 from system.tracing import flush as langfuse_flush
-from downloader.processor import process_youtube, process_uploaded_files
+from downloader.processor import process_youtube, process_saved_uploads
 from api.schemas import ForwardRequest, IngestRequest
 from system.auth.deps import get_current_user
 from system.auth.models import User
 from system.auth.service import ensure_admin
 from api.auth_routes import router as auth_router
+from system.ingest_jobs import create_job, update_job, get_job
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -84,26 +88,49 @@ async def check_vdb(user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="vector db is not available")
 
 
-@app.post("/ingest", tags=["Ingest"])
-async def ingest(req: IngestRequest, user: User = Depends(get_current_user)):
-    logger.info(
-        "Ingest request: %s (keep_video=%s, keep_audio=%s, export_txt=%s, export_json=%s)",
-        req.url, req.keep_video, req.keep_audio, req.export_txt, req.export_json,
-    )
+async def _run_youtube_job(job_id: str, req: IngestRequest) -> None:
+    update_job(job_id, status="running")
     try:
-        return await process_youtube(
-            url=req.url,
-            keep_video=req.keep_video,
-            export_txt=req.export_txt,
-            export_json=req.export_json,
-            keep_audio=req.keep_audio,
+        res = await process_youtube(
+            url=req.url, keep_video=req.keep_video, export_txt=req.export_txt,
+            export_json=req.export_json, keep_audio=req.keep_audio,
+            progress_cb=lambda u: update_job(job_id, **u),
         )
+        update_job(job_id, status="done", progress=100.0, items=res["items"],
+                   errors=res["errors"], error_count=res["error_count"],
+                   done_items=res["ingested_count"],
+                   total_items=res["ingested_count"] + res["error_count"])
     except Exception as e:
-        logger.error("Ingest failed for %s: %s", req.url, e)
-        raise HTTPException(status_code=422, detail="не удалось обработать URL")
+        logger.exception("ingest job %s failed: %s", job_id, e)
+        update_job(job_id, status="error", detail=str(e))
 
 
-@app.post("/ingest-upload", tags=["Ingest"])
+async def _run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio) -> None:
+    update_job(job_id, status="running")
+    try:
+        res = await process_saved_uploads(
+            saved, export_txt=export_txt, export_json=export_json, keep_audio=keep_audio,
+            progress_cb=lambda u: update_job(job_id, **u),
+        )
+        update_job(job_id, status="done", progress=100.0, items=res["items"],
+                   errors=res["errors"], error_count=res["error_count"],
+                   done_items=res["ingested_count"],
+                   total_items=res["ingested_count"] + res["error_count"])
+    except Exception as e:
+        logger.exception("upload job %s failed: %s", job_id, e)
+        update_job(job_id, status="error", detail=str(e))
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@app.post("/ingest", status_code=202, tags=["Ingest"])
+async def ingest(req: IngestRequest, user: User = Depends(get_current_user)):
+    job_id = create_job()
+    asyncio.create_task(_run_youtube_job(job_id, req))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.post("/ingest-upload", status_code=202, tags=["Ingest"])
 async def ingest_upload(
     files: List[UploadFile] = File(...),
     export_txt: bool = False,
@@ -111,12 +138,29 @@ async def ingest_upload(
     keep_audio: bool = False,
     user: User = Depends(get_current_user),
 ):
-    return await process_uploaded_files(
-        files=files,
-        export_txt=export_txt,
-        export_json=export_json,
-        keep_audio=keep_audio,
-    )
+    tmp_dir = tempfile.mkdtemp(prefix="ingest_up_")
+    saved: list[tuple[str, str]] = []
+    for f in files:
+        name = Path(f.filename).name                      # path-traversal safe
+        dest = str(Path(tmp_dir) / name)
+        with open(dest, "wb") as out:                     # stream to disk (no full-file-in-RAM)
+            while True:
+                chunk = await f.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        saved.append((dest, name))
+    job_id = create_job()
+    asyncio.create_task(_run_upload_job(job_id, saved, tmp_dir, export_txt, export_json, keep_audio))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/ingest-status/{job_id}", tags=["Ingest"])
+async def ingest_status(job_id: str, user: User = Depends(get_current_user)):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {k: v for k, v in job.items() if k != "created_at"}
 
 
 @app.post("/forward", tags=["Usage"])

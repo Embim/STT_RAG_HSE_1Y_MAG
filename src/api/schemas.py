@@ -1,5 +1,6 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from urllib.parse import urlparse
+from pydantic import BaseModel, Field, field_validator
 
 
 class ForwardRequest(BaseModel):
@@ -11,11 +12,28 @@ class ForwardRequest(BaseModel):
     source_title: Optional[str] = Field(None, description="Искать только в выбранном видео по названию")
 
 
+_ALLOWED_INGEST_HOSTS = {
+    "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+    "vimeo.com", "www.vimeo.com",
+}
+
+
 class IngestRequest(BaseModel):
     url: str = Field(..., description="YouTube video or playlist URL")
     export_txt: bool = Field(False, description="Save plain transcript .txt to data/transcripts/ and include in response")
     export_json: bool = Field(False, description="Save full transcript .json with segments/timestamps to data/transcripts/")
     keep_video: bool = Field(False, description="Download and save full video to data/video/")
     keep_audio: bool = Field(False, description="Save extracted audio to data/audio/")
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, v: str) -> str:
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("url must be http(s)")
+        host = (parsed.hostname or "").lower()
+        if host not in _ALLOWED_INGEST_HOSTS:
+            raise ValueError("url host not allowed")
+        return v
 
 
