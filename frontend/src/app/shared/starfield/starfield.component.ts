@@ -195,7 +195,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  // ── drawStar3D: software-rendered 3D octahedron gem with radiant spikes ─────
+  // ── drawStar3D: software-rendered 3D 5-pointed star bipyramid ───────────────
   private drawStar3D(
     ctx: CanvasRenderingContext2D,
     cx: number, cy: number,
@@ -203,8 +203,31 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     rx: number, ry: number, rz: number,
     base: number[],
   ): void {
-    const V: number[][] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-    const F: number[][] = [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]];
+    // ── star bipyramid geometry ──────────────────────────────────────────────
+    const POINTS = 5;
+    const INNER  = 0.42;   // inner radius ratio — smaller = sharper points
+    const DEPTH  = 0.40;   // half-thickness for front/back apex, relative to outer radius 1
+
+    // 2*POINTS perimeter vertices in the z=0 plane: alternating outer(1)/inner(INNER)
+    // starting at the top (–π/2) so a tip points straight up at rest
+    const V: number[][] = [];
+    for (let i = 0; i < 2 * POINTS; i++) {
+      const a   = (i * Math.PI / POINTS) - Math.PI / 2;
+      const rad = i % 2 === 0 ? 1 : INNER;
+      V.push([Math.cos(a) * rad, Math.sin(a) * rad, 0]);
+    }
+    const FRONT = V.length; V.push([0, 0,  DEPTH]);   // front apex
+    const BACK  = V.length; V.push([0, 0, -DEPTH]);   // back apex
+
+    // Each perimeter edge i→j forms one front triangle and one back triangle
+    const F: number[][] = [];
+    for (let i = 0; i < 2 * POINTS; i++) {
+      const j = (i + 1) % (2 * POINTS);
+      F.push([FRONT, i, j]);   // front face (winding: apex, then ccw perimeter edge)
+      F.push([BACK,  j, i]);   // back face  (reversed winding)
+    }
+
+    // ── rotation matrix & perspective projection ─────────────────────────────
     const cax=Math.cos(rx),sax=Math.sin(rx),cay=Math.cos(ry),say=Math.sin(ry),caz=Math.cos(rz),saz=Math.sin(rz);
     const rot = (p: number[]): number[] => {
       let x=p[0],y=p[1],z=p[2];
@@ -228,16 +251,17 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     halo.addColorStop(1, `rgba(${base[0]},${base[1]},${base[2]},0)`);
     ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0,0,R*2.0,0,Math.PI*2); ctx.fill();
 
-    // radiant spikes from the 6 vertices (projected — naturally foreshorten in 3D)
-    const SPIKE = 1.9;
-    for (let i=0;i<6;i++){
-      const tip = proj([RV[i][0]*SPIKE, RV[i][1]*SPIKE, RV[i][2]*SPIKE]);
-      const facing = (RV[i][2] + 1) / 2;                             // front spikes brighter
-      const g = ctx.createLinearGradient(0,0, tip[0]*R, tip[1]*R);
-      g.addColorStop(0, `rgba(255,250,240,${(0.5*facing+0.15).toFixed(3)})`);
+    // subtle radiant glints from the 5 outer tips (even-indexed perimeter verts)
+    for (let i = 0; i < 2 * POINTS; i += 2) {
+      const tip = RV[i];
+      const tproj = proj([tip[0] * 1.5, tip[1] * 1.5, tip[2]]);
+      const base0 = proj(tip);
+      const facing = Math.max(0, (tip[2] + 1) / 2);                  // front-facing tips brighter
+      const g = ctx.createLinearGradient(base0[0]*R, base0[1]*R, tproj[0]*R, tproj[1]*R);
+      g.addColorStop(0, `rgba(255,250,240,${(0.45*facing+0.08).toFixed(3)})`);
       g.addColorStop(1, `rgba(${base[0]},${base[1]},${base[2]},0)`);
-      ctx.strokeStyle = g; ctx.lineWidth = 0.9; ctx.lineCap='round';
-      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(tip[0]*R, tip[1]*R); ctx.stroke();
+      ctx.strokeStyle = g; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(base0[0]*R, base0[1]*R); ctx.lineTo(tproj[0]*R, tproj[1]*R); ctx.stroke();
     }
 
     // faces: outward normal, back-face cull, diffuse shade, draw front faces
@@ -324,7 +348,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         ctx.strokeStyle = g; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(tx, ty); ctx.stroke();
 
-        // 3D rotating octahedron gem head at the leading point
+        // 3D rotating star bipyramid head at the leading point
         ctx.globalAlpha = alpha;
         this.drawStar3D(ctx, sh.x, sh.y, (sh.size ?? 5) * 1.9, sh.rx, sh.ry, sh.rz, [236, 230, 216]);
         ctx.globalAlpha = 1;
