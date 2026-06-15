@@ -24,6 +24,8 @@ from system.auth.service import ensure_admin
 from api.auth_routes import router as auth_router
 from system.ingest_jobs import create_job, update_job, get_job
 
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB per file
+
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
@@ -141,13 +143,19 @@ async def ingest_upload(
     tmp_dir = tempfile.mkdtemp(prefix="ingest_up_")
     saved: list[tuple[str, str]] = []
     for f in files:
-        name = Path(f.filename).name                      # path-traversal safe
+        name = Path(f.filename or "").name or f"upload_{len(saved)}"   # None/empty/path-traversal safe
         dest = str(Path(tmp_dir) / name)
-        with open(dest, "wb") as out:                     # stream to disk (no full-file-in-RAM)
+        size = 0
+        with open(dest, "wb") as out:
             while True:
                 chunk = await f.read(1024 * 1024)
                 if not chunk:
                     break
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    out.close()
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    raise HTTPException(status_code=413, detail="file too large")
                 out.write(chunk)
         saved.append((dest, name))
     job_id = create_job()

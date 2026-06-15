@@ -7,10 +7,9 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable
 from urllib.parse import urlparse
 
-from fastapi import UploadFile
 
 from downloader.transcriber import transcribe
 from downloader.ingest import ingest_json_to_vector_store
@@ -122,17 +121,6 @@ async def process_youtube(
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
 
 
-def _save_uploads_sync(files, work_dir):
-    """(used by the sync wrapper) — write UploadFiles to work_dir, return [(path, filename)]."""
-    saved = []
-    for f in files:
-        name = Path(f.filename).name
-        p = Path(work_dir) / name
-        # NOTE: sync wrapper path; the async API endpoint streams uploads itself.
-        saved.append((str(p), name))
-    return saved
-
-
 async def process_saved_uploads(
     saved: list[tuple[str, str]],
     export_txt: bool,
@@ -184,30 +172,6 @@ async def process_saved_uploads(
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
-
-
-async def process_uploaded_files(
-    files: List[UploadFile],
-    export_txt: bool,
-    export_json: bool = False,
-    keep_audio: bool = False,
-) -> dict:
-    """Save uploaded files, extract audio, transcribe and ingest each one."""
-    tmp_dir = tempfile.mkdtemp()
-    saved: list[tuple[str, str]] = []
-    try:
-        for upload_file in files:
-            name = Path(upload_file.filename).name
-            dest = str(Path(tmp_dir) / name)
-            data = await upload_file.read()
-            Path(dest).write_bytes(data)
-            saved.append((dest, upload_file.filename))
-        return await process_saved_uploads(
-            saved, export_txt=export_txt, export_json=export_json, keep_audio=keep_audio,
-        )
-    except Exception:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        raise
 
 
 async def transcribe_and_ingest(

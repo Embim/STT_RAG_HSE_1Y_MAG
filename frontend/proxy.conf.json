@@ -4,5 +4,6 @@
   "/auth-check": { "target": "http://localhost:8001", "secure": false },
   "/ingest": { "target": "http://localhost:8001", "secure": false },
   "/ingest-upload": { "target": "http://localhost:8001", "secure": false },
+  "/ingest-status": { "target": "http://localhost:8001", "secure": false },
   "/check-vdb": { "target": "http://localhost:8001", "secure": false }
 }
