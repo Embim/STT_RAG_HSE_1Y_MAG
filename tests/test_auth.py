@@ -58,3 +58,36 @@ def test_long_password_does_not_crash(auth):
     pw = "a" * 100  # > 72 bytes
     auth.create_user("longpw", pw)
     assert auth.authenticate_user("longpw", pw) is not None
+
+
+def _client(auth):
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+    import importlib
+    with patch("system.rag.vectore_store.weaviate.connect_to_local"):
+        import api.main as main
+        importlib.reload(main)
+        return TestClient(main.app)
+
+
+def test_login_and_protected_route(auth):
+    auth.create_user("alice", "pw", role="admin")
+    c = _client(auth)
+    assert c.post("/forward", json={"question": "x", "use_rewrite": False}).status_code == 401
+    assert c.post("/auth/login", json={"username": "alice", "password": "bad"}).status_code == 401
+    r = c.post("/auth/login", json={"username": "alice", "password": "pw"})
+    assert r.status_code == 200
+    token = r.json()["access_token"]
+    assert c.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["role"] == "admin"
+
+
+def test_admin_only(auth):
+    auth.create_user("admin1", "pw", role="admin")
+    auth.create_user("user1", "pw", role="user")
+    c = _client(auth)
+    admin_tok = c.post("/auth/login", json={"username": "admin1", "password": "pw"}).json()["access_token"]
+    user_tok = c.post("/auth/login", json={"username": "user1", "password": "pw"}).json()["access_token"]
+    assert c.post("/admin/users", json={"username": "z", "password": "p"},
+                  headers={"Authorization": f"Bearer {user_tok}"}).status_code == 403
+    assert c.post("/admin/users", json={"username": "z", "password": "p"},
+                  headers={"Authorization": f"Bearer {admin_tok}"}).status_code == 200

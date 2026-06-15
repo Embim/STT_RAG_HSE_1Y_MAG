@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 
 import colorlog
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +15,10 @@ from system.llm.llm_services import get_chat_vectore_store_manager
 from system.tracing import flush as langfuse_flush
 from downloader.processor import process_youtube, process_uploaded_files
 from api.schemas import ForwardRequest, IngestRequest
+from system.auth.deps import get_current_user
+from system.auth.models import User
+from system.auth.service import ensure_admin
+from api.auth_routes import router as auth_router
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -45,30 +49,14 @@ logging.basicConfig(level=logging.INFO, handlers=[_console, _file])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_admin()
     yield
     langfuse_flush()
 
 
 app = FastAPI(title="DS Navigator API", lifespan=lifespan)
+app.include_router(auth_router)
 logger = logging.getLogger(__name__)
-
-
-# ── Access gate ──────────────────────────────────────────────────────
-# Когда задан DEMO_ACCESS_TOKEN — дорогие/абьюзо-опасные ручки требуют
-# заголовок X-Demo-Token (или ?key=...). Нужно при публичной выдаче через
-# туннель: /forward жжёт OpenRouter-кредиты, ingest качает+транскрибирует
-# по запросу. Пусто (дефолт) → гейт выключен, локальная разработка как была.
-DEMO_ACCESS_TOKEN = os.getenv("DEMO_ACCESS_TOKEN", "")
-_PROTECTED_PATHS = {"/forward", "/ingest", "/ingest-upload"}
-
-
-@app.middleware("http")
-async def access_gate(request: Request, call_next):
-    if DEMO_ACCESS_TOKEN and request.url.path in _PROTECTED_PATHS:
-        provided = request.headers.get("X-Demo-Token") or request.query_params.get("key")
-        if provided != DEMO_ACCESS_TOKEN:
-            return JSONResponse(status_code=401, content={"detail": "unauthorized"})
-    return await call_next(request)
 
 
 @app.exception_handler(RequestValidationError)
@@ -81,25 +69,13 @@ async def root():
     return {"message": "Welcome to DS Navigator API", "documentation": "/docs"}
 
 
-@app.get("/auth-check", tags=["Health"])
-async def auth_check(request: Request):
-    """Фронт дёргает это, чтобы проверить введённый ключ перед стартом.
-    Если гейт выключен — всегда ok. Если включён — проверяет X-Demo-Token."""
-    if not DEMO_ACCESS_TOKEN:
-        return {"gate": False, "ok": True}
-    provided = request.headers.get("X-Demo-Token") or request.query_params.get("key")
-    if provided != DEMO_ACCESS_TOKEN:
-        raise HTTPException(status_code=401, detail="unauthorized")
-    return {"gate": True, "ok": True}
-
-
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
 async def healthcheck():
     return {"status": "ok"}
 
 
 @app.get("/check-vdb", tags=["Health"])
-async def check_vdb():
+async def check_vdb(user: User = Depends(get_current_user)):
     try:
         collection = get_chat_vectore_store_manager().collection
         count = collection.aggregate.over_all(total_count=True).total_count
@@ -109,7 +85,7 @@ async def check_vdb():
 
 
 @app.post("/ingest", tags=["Ingest"])
-async def ingest(req: IngestRequest):
+async def ingest(req: IngestRequest, user: User = Depends(get_current_user)):
     logger.info(
         "Ingest request: %s (keep_video=%s, keep_audio=%s, export_txt=%s, export_json=%s)",
         req.url, req.keep_video, req.keep_audio, req.export_txt, req.export_json,
@@ -133,6 +109,7 @@ async def ingest_upload(
     export_txt: bool = False,
     export_json: bool = False,
     keep_audio: bool = False,
+    user: User = Depends(get_current_user),
 ):
     return await process_uploaded_files(
         files=files,
@@ -143,7 +120,7 @@ async def ingest_upload(
 
 
 @app.post("/forward", tags=["Usage"])
-async def forward(req: ForwardRequest):
+async def forward(req: ForwardRequest, user: User = Depends(get_current_user)):
     try:
         return await run(
             question=req.question,
@@ -159,7 +136,7 @@ async def forward(req: ForwardRequest):
 
 
 @app.get("/source-files", tags=["Usage"])
-async def source_files():
+async def source_files(user: User = Depends(get_current_user)):
     try:
         files = get_chat_vectore_store_manager().list_source_titles()
         return {"files": files}
