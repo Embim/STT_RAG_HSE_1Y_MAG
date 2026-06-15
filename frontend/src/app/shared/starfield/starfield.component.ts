@@ -203,31 +203,25 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     rx: number, ry: number, rz: number,
     base: number[],
   ): void {
-    // ── stellated octahedron geometry ────────────────────────────────────────
-    const TIP   = 1.0;
-    const INSET = 0.40;  // distance of per-face inset vertex from origin.
-                         // < 0.577 (natural oct face dist) → concave dimple. TUNABLE.
-
-    const tips: number[][] = [
-      [ TIP,   0,   0], [-TIP,   0,   0],
-      [   0, TIP,   0], [   0, -TIP,   0],
-      [   0,   0, TIP], [   0,   0, -TIP],
-    ];
-    // 8 octahedron faces (one per octant), each as index triple into tips[]
-    const oct: number[][] = [
-      [0,2,4],[2,1,4],[1,3,4],[3,0,4],
-      [2,0,5],[1,2,5],[3,1,5],[0,3,5],
-    ];
+    // ── stellated octahedron geometry (two-level dimple) ─────────────────────
+    const tips: number[][] = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+    const oct: number[][] = [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]];
+    const MID = 0.62;   // radius of the mid-edge ridge ring (octahedron edge-mid ≈0.707 → pulled in). TUNABLE
+    const DEEP = 0.34;  // radius of the deep face-center vertex. TUNABLE
     const V: number[][] = tips.map(t => t.slice());
     const F: number[][] = [];
-    for (const fc of oct) {
-      const a = tips[fc[0]], b = tips[fc[1]], c = tips[fc[2]];
-      const sx = a[0]+b[0]+c[0], sy = a[1]+b[1]+c[1], sz = a[2]+b[2]+c[2];
-      const L  = Math.hypot(sx, sy, sz) || 1;
-      const m  = [sx/L*INSET, sy/L*INSET, sz/L*INSET]; // face-center vertex pulled toward origin
-      const mi = V.length; V.push(m);
-      // split flat face into 3 triangles meeting at the inset center → concave dimple
-      F.push([fc[0], fc[1], mi], [fc[1], fc[2], mi], [fc[2], fc[0], mi]);
+    const pull = (p: number[], r: number): number[] => { const L = Math.hypot(p[0],p[1],p[2]) || 1; return [p[0]/L*r, p[1]/L*r, p[2]/L*r]; };
+    const add  = (v: number[]): number => { V.push(v); return V.length - 1; };
+    for (const [ia, ib, ic] of oct) {
+      const a = tips[ia], b = tips[ib], c = tips[ic];
+      const ab = add(pull([(a[0]+b[0])/2, (a[1]+b[1])/2, (a[2]+b[2])/2], MID));
+      const bc = add(pull([(b[0]+c[0])/2, (b[1]+c[1])/2, (b[2]+c[2])/2], MID));
+      const ca = add(pull([(c[0]+a[0])/2, (c[1]+a[1])/2, (c[2]+a[2])/2], MID));
+      const m  = add(pull([a[0]+b[0]+c[0], a[1]+b[1]+c[1], a[2]+b[2]+c[2]], DEEP));
+      // corner caps: each tip with the two adjacent mid-edge ring vertices
+      F.push([ia, ab, ca], [ib, bc, ab], [ic, ca, bc]);
+      // inner dimple: mid-edge ring down to the deep center
+      F.push([ab, bc, m], [bc, ca, m], [ca, ab, m]);
     }
 
     // ── rotation matrix & perspective projection ─────────────────────────────
