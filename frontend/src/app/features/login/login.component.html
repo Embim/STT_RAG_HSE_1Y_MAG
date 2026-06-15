@@ -1,0 +1,8 @@
+<section class="login">
+  <h1>DS Navigator</h1>
+  <p class="sub">Вход в систему</p>
+  <input [(ngModel)]="username" (keydown.enter)="submit()" placeholder="Логин" autocomplete="username" />
+  <input [(ngModel)]="password" (keydown.enter)="submit()" type="password" placeholder="Пароль" autocomplete="current-password" />
+  <button (click)="submit()" [disabled]="loading()">{{ loading() ? 'Вход…' : 'Войти' }}</button>
+  @if (error()) { <p class="err">{{ error() }}</p> }
+</section>

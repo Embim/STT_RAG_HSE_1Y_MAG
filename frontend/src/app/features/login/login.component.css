@@ -1,0 +1,7 @@
+.login { max-width: 340px; margin: 12vh auto; display: grid; gap: 12px; padding: 0 20px; }
+h1 { font-size: 24px; margin: 0; }
+.sub { color: #777; margin: 0 0 8px; }
+.login input { padding: 12px 14px; font-size: 15px; border: 1px solid #ccc; border-radius: 10px; }
+.login button { padding: 12px; font-weight: 600; border: 0; border-radius: 10px; background: #e3b341; cursor: pointer; }
+.login button:disabled { opacity: .5; cursor: not-allowed; }
+.err { color: #c0392b; margin: 0; }
