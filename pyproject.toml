@@ -20,6 +20,9 @@ dependencies = [
     "weaviate-client>=4.20.1",
     "yt-dlp>=2026.2.21",
     "langfuse>=3.0.0",
+    "sqlmodel>=0.0.38",
+    "bcrypt>=5.0.0",
+    "pyjwt>=2.13.0",
 ]
 
 [project.optional-dependencies]

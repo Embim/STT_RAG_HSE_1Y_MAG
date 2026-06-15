@@ -126,6 +126,14 @@ class Settings(BaseSettings):
     JUDGE_MAX_INPUT_CHARS: int = 4000
     JUDGE_PROMPT_DIR: str = "prompts/judge"
 
+    # ── Auth (Phase 2) ──────────────────────────────────────────────
+    JWT_SECRET: str = "dev-insecure-change-me"   # MUST override in .env for prod
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 720                # 12h
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = ""                      # set in .env -> admin auto-created on startup
+    AUTH_DB_PATH: str = ""                        # empty -> <repo>/auth/users.db
+
     class Config:
         env_file = ENV_PATH
         env_file_encoding = 'utf-8'
