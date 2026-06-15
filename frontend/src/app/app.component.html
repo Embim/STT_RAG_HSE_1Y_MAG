@@ -1,24 +1,29 @@
 <!-- Animated starfield canvas (drifting stars + shooting stars, behind all UI) -->
 <app-starfield />
 
-<!-- Fixed topographic contour motif (behind all content) -->
-<svg class="bg-contour" viewBox="0 0 400 400" fill="none" aria-hidden="true">
-  <g stroke="#e3b341" stroke-width="0.6" opacity="0.5">
-    <circle cx="210" cy="190" r="30"/>
-    <circle cx="206" cy="186" r="58"/>
-    <circle cx="200" cy="184" r="86"/>
-    <circle cx="196" cy="180" r="116"/>
-    <circle cx="190" cy="178" r="148"/>
-    <circle cx="186" cy="176" r="182"/>
-  </g>
-  <g stroke="#6fc6cf" stroke-width="0.5" opacity="0.3">
-    <circle cx="210" cy="190" r="44"/>
-    <circle cx="203" cy="185" r="72"/>
-    <circle cx="197" cy="182" r="101"/>
-    <circle cx="192" cy="179" r="132"/>
-  </g>
-  <circle cx="210" cy="190" r="3" fill="#e3b341" stroke="none"/>
-</svg>
+<!-- Fixed topographic contour motif (behind all content).
+     Wrapper (.bg-contour) carries the parallax translate;
+     inner SVG (.bg-contour-svg) carries the spin animation
+     so the two individual transform props never conflict. -->
+<div class="bg-contour" aria-hidden="true">
+  <svg class="bg-contour-svg" viewBox="0 0 400 400" fill="none">
+    <g stroke="#e3b341" stroke-width="0.6" opacity="0.5">
+      <circle cx="210" cy="190" r="30"/>
+      <circle cx="206" cy="186" r="58"/>
+      <circle cx="200" cy="184" r="86"/>
+      <circle cx="196" cy="180" r="116"/>
+      <circle cx="190" cy="178" r="148"/>
+      <circle cx="186" cy="176" r="182"/>
+    </g>
+    <g stroke="#6fc6cf" stroke-width="0.5" opacity="0.3">
+      <circle cx="210" cy="190" r="44"/>
+      <circle cx="203" cy="185" r="72"/>
+      <circle cx="197" cy="182" r="101"/>
+      <circle cx="192" cy="179" r="132"/>
+    </g>
+    <circle cx="210" cy="190" r="3" fill="#e3b341" stroke="none"/>
+  </svg>
+</div>
 
 @if (auth.isAuthenticated()) {
   <header class="topbar reveal">

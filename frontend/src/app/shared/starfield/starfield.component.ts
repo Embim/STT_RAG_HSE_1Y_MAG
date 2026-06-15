@@ -27,12 +27,26 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
   private reduced = false;
   private onResize = () => this.resize();
 
+  // Cursor parallax state
+  private px = 0; private py = 0;
+  private tpx = 0; private tpy = 0;
+  private onPointerMove = (e: PointerEvent) => {
+    this.tpx = (e.clientX / window.innerWidth - 0.5) * 2;
+    this.tpy = (e.clientY / window.innerHeight - 0.5) * 2;
+  };
+
   ngAfterViewInit(): void {
     this.ctx = this.cv.nativeElement.getContext('2d')!;
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.resize();
     window.addEventListener('resize', this.onResize);
-    if (this.reduced) { this.draw(0, true); return; }
+    if (this.reduced) {
+      document.documentElement.style.setProperty('--par-x', '0');
+      document.documentElement.style.setProperty('--par-y', '0');
+      this.draw(0, true);
+      return;
+    }
+    window.addEventListener('pointermove', this.onPointerMove);
     this.zone.runOutsideAngular(() => {
       const loop = (t: number) => { this.draw(t, false); this.raf = requestAnimationFrame(loop); };
       this.raf = requestAnimationFrame(loop);
@@ -42,6 +56,7 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('pointermove', this.onPointerMove);
   }
 
   private resize(): void {
@@ -79,6 +94,14 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
 
+    // Lerp parallax offsets and publish as CSS variables each frame
+    if (!still) {
+      this.px += (this.tpx - this.px) * 0.05;
+      this.py += (this.tpy - this.py) * 0.05;
+      document.documentElement.style.setProperty('--par-x', this.px.toFixed(4));
+      document.documentElement.style.setProperty('--par-y', this.py.toFixed(4));
+    }
+
     for (const s of this.stars) {
       if (!still) {
         s.y += s.z * 0.12 * (dt / 16);
@@ -87,9 +110,11 @@ export class StarfieldComponent implements AfterViewInit, OnDestroy {
         if (s.x < -2) { s.x = this.w + 2; }
       }
       const tw = still ? 1 : 0.7 + 0.3 * Math.sin(t * s.tw + s.ph);
+      const drawX = s.x + this.px * s.z * 16;
+      const drawY = s.y + this.py * s.z * 16;
       ctx.beginPath();
       ctx.fillStyle = `rgba(${s.c},${(s.a * tw).toFixed(3)})`;
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, s.r, 0, Math.PI * 2);
       ctx.fill();
     }
 
