@@ -1,0 +1,66 @@
+<section class="wrap">
+  <div class="head">
+    <div>
+      <h1>Карта тем</h1>
+      <p class="lede">3D-проекция эмбеддингового пространства. Каждая точка — фрагмент лекции; цвет — авто-тема.</p>
+    </div>
+    @if (!loading() && !error()) {
+      <div class="chips">
+        <span class="chip">{{ count() }} точек</span>
+        <span class="chip">{{ topics().length }} тем</span>
+        <span class="chip">{{ reducer() | uppercase }}</span>
+      </div>
+    }
+  </div>
+
+  <div class="search">
+    <input class="in" [(ngModel)]="query" (keydown.enter)="search()"
+           placeholder="Найти тему в пространстве — напр. «коллаборативная фильтрация»…" />
+    <button (click)="search()" [disabled]="searching() || !query.trim()">
+      {{ searching() ? '…' : 'Найти' }}
+    </button>
+    @if (resultCount() !== null) {
+      <button class="ghost" (click)="clearSearch()">Сброс</button>
+      <span class="mono">подсвечено: {{ resultCount() }}</span>
+    }
+  </div>
+
+  <div class="stage">
+    <div #host class="canvas-host"></div>
+
+    @if (loading()) { <div class="overlay"><span class="spinner"></span> строю карту…</div> }
+    @if (error()) { <div class="overlay err">{{ error() }}</div> }
+
+    @if (hover(); as h) {
+      <div class="tip" [style.left.px]="h.x + 14" [style.top.px]="h.y + 14">
+        <div class="tip-title">{{ h.title }}</div>
+        <div class="tip-snip">{{ h.snippet }}</div>
+      </div>
+    }
+
+    @if (topics().length) {
+      <div class="legend">
+        <div class="legend-h">Темы</div>
+        @for (t of topics(); track t.cluster) {
+          <button class="legend-row" (click)="focusTopic(t)" title="Подсветить тему">
+            <span class="dot" [style.background]="t.color"></span>
+            <span class="legend-label">{{ t.label }}</span>
+            <span class="legend-size">{{ t.size }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    @if (selected(); as p) {
+      <div class="detail">
+        <button class="detail-x" (click)="selected.set(null)">×</button>
+        <div class="detail-title">{{ p.title }}</div>
+        @if (p.start != null) { <div class="mono dim">⏱ {{ fmtTime(p.start) }}</div> }
+        <p class="detail-snip">{{ p.snippet }}</p>
+        @if (openSelected(); as url) {
+          <a class="detail-link" [href]="url" target="_blank" rel="noopener noreferrer">Открыть фрагмент в видео →</a>
+        }
+      </div>
+    }
+  </div>
+</section>

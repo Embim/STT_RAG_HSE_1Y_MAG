@@ -1,0 +1,14 @@
+# Auto-load any *.json file in /etc/grafana/provisioning/dashboards as a dashboard.
+apiVersion: 1
+
+providers:
+  - name: 'STT RAG'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

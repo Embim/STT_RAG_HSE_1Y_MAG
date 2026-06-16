@@ -1,0 +1,130 @@
+/* ── Login page — secure terminal sign-in card ────────────── */
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login {
+  width: min(420px, 100%);
+  background: linear-gradient(180deg, var(--surface), var(--ink-2));
+  border: 1px solid var(--line-2);
+  border-radius: 18px;
+  padding: 40px 36px 36px;
+  box-shadow: 0 40px 90px -40px rgba(0,0,0,.85);
+  display: grid;
+  gap: 14px;
+  animation: rise .6s cubic-bezier(.2,.7,.2,1) both;
+  text-align: center;
+}
+
+/* Brand mark inside card */
+.login-mark {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, var(--surface-2), var(--ink-2));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  margin: 0 auto 4px;
+}
+
+.login-mark svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Heading */
+h1 {
+  font-family: "Fraunces", serif;
+  font-weight: 600;
+  font-size: 24px;
+  letter-spacing: -.01em;
+  color: var(--bone);
+  margin: 0;
+  line-height: 1.15;
+}
+
+/* Subline */
+.sub {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+/* Inputs */
+.login input {
+  width: 100%;
+  background: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  color: var(--bone);
+  font-family: "Hanken Grotesk", sans-serif;
+  font-size: 15px;
+  outline: none;
+  transition: border-color .18s, box-shadow .18s;
+}
+
+.login input::placeholder {
+  color: var(--muted);
+}
+
+.login input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+/* Submit button */
+.login button[type="submit"],
+.login button:not(.err-btn) {
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+  background: var(--amber);
+  color: var(--ink);
+  font-family: "Hanken Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 14px;
+  border-radius: 10px;
+  transition: filter .15s, transform .12s;
+  margin-top: 4px;
+}
+
+.login button:hover:not(:disabled) {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+}
+
+.login button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.login button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+/* Error message */
+.err {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12.5px;
+  color: var(--danger);
+  border: 1px solid rgba(224,121,95,.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: rgba(224,121,95,.07);
+  text-align: left;
+  margin: 0;
+}
