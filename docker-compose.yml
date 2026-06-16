@@ -77,6 +77,108 @@ services:
       AUTOSCHEMA_ENABLED: "true"
     volumes:
       - weaviate-data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    <<: *shared-logs
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: stt-rag-api:latest
+    container_name: stt-rag-api
+    restart: unless-stopped
+    networks:
+      - rag-net
+    expose:
+      - "8001"
+    profiles:
+      - web
+      - full
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: "8080"
+      EMBEDDING_URL: http://infinity:7997/v1/embeddings
+      WEAVIATE_VECTORIZER_BASE_URL: http://infinity:7997
+      WHISPER_URL: http://asr:8000
+      SERVE_SPA: "false"
+      # Per-request выбор ASR-модели. По умолчанию false (выбор валидируется, но
+      # авто-свап контейнеров выключен). Чтобы включить — используй overlay
+      # docker-compose.autoswap.yml (монтирует docker.sock). Подробнее:
+      # docs/asr_model_selection.md
+      ASR_AUTOSWAP_ENABLED: "${ASR_AUTOSWAP_ENABLED:-false}"
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me-in-dotenv!}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      AUTH_DATABASE_URL: postgresql+psycopg2://authuser:${AUTH_DB_PASSWORD:-authpass}@auth-postgres:5432/authdb
+    depends_on:
+      weaviate:
+        condition: service_healthy
+      auth-postgres:
+        condition: service_healthy
+    <<: *shared-logs
+
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: auth-postgres
+    restart: unless-stopped
+    networks:
+      - rag-net
+    profiles:
+      - web
+      - full
+    environment:
+      POSTGRES_USER: authuser
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-authpass}
+      POSTGRES_DB: authdb
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "authuser"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    <<: *shared-logs
+
+  nginx:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        DOMAIN: ${DOMAIN:-localhost}
+    image: ds-navigator-web:latest
+    container_name: ds-navigator-nginx
+    restart: unless-stopped
+    networks:
+      - rag-net
+    ports:
+      - "80:80"
+      - "443:443"
+    profiles:
+      - web
+      - full
+    # LOCAL DEV defaults — переопредели ВСЕ через .env для прода (иначе сайт молча
+    # отдаёт самоподписанный серт без ошибки в браузере):
+    #   USE_LOCAL_CA=1  → самоподписанный серт, без обращения к ACME
+    #   STAGING=1       → staging-CA Let's Encrypt (тоже не доверяется браузером)
+    #   CERTBOT_EMAIL   → реальный email (LE отвергает test@example.com)
+    # ПРОД в .env: DOMAIN=<домен>, CERTBOT_EMAIL=<email>, STAGING=0, USE_LOCAL_CA=
+    #   (пустое значение реально выключает local-CA; "-" без двоеточия это позволяет).
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-test@example.com}
+      STAGING: "${STAGING:-1}"
+      USE_LOCAL_CA: "${USE_LOCAL_CA-1}"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    depends_on:
+      - api
     <<: *shared-logs
 
   # ────────────────────────────────────────────────────────────────────
@@ -947,6 +1049,7 @@ services:
     <<: *shared-logs
 
 volumes:
+  auth-postgres-data:
   weaviate-data:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
@@ -956,3 +1059,4 @@ volumes:
   mlflow-minio-data:
   prometheus-data:
   grafana-data:
+  letsencrypt:

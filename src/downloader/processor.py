@@ -7,17 +7,24 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import List
+from typing import Callable
 from urllib.parse import urlparse
 
-from fastapi import UploadFile
 
 from downloader.transcriber import transcribe
 from downloader.ingest import ingest_json_to_vector_store
 from downloader.sources.youtube import download_audio, download_video, get_playlist_urls
 from downloader.sources.local_audio import extract_audio_from_video
-from downloader.ocr import extract_text_from_video, merge_ocr_segments
+try:
+    from downloader.ocr import extract_text_from_video, merge_ocr_segments
+except ImportError:
+    # OCR-зависимости (easyocr/opencv/torch) тяжёлые и нужны только при use_ocr=True.
+    # Если они не установлены (напр. на машине без GPU), приложение всё равно
+    # стартует и работает — OCR просто молча отключается.
+    extract_text_from_video = None
+    merge_ocr_segments = None
 from processing.chunked_transcribe import ffprobe_metadata, transcribe_chunked
+from evaluation.asr.backends.http_asr import HttpASRBackend
 from processing.progress_tracker import video_run
 from processing.quality_signals import compute as compute_quality_signals
 from settings import settings
@@ -56,6 +63,9 @@ async def process_youtube(
     export_json: bool = False,
     keep_audio: bool = False,
     use_ocr: bool = False,
+    progress_cb: Callable[[dict], None] | None = None,
+    backend: HttpASRBackend | None = None,
+    asr_label: str | None = None,
 ) -> dict:
     """Download, transcribe and ingest a YouTube URL (video or playlist).
 
@@ -69,11 +79,28 @@ async def process_youtube(
     video_urls = await asyncio.to_thread(get_playlist_urls, url) if is_playlist else [url]
     logger.info("%s detected: %d video(s)", "Playlist" if is_playlist else "Video", len(video_urls))
 
+    total = len(video_urls)
+    fractions = {u: 0.0 for u in video_urls}
+
+    def _report(current: str | None = None) -> None:
+        if progress_cb:
+            overall = 100.0 * sum(fractions.values()) / max(1, total)
+            done = sum(1 for f in fractions.values() if f >= 1.0)
+            progress_cb({"total_items": total, "done_items": done,
+                         "progress": round(overall, 1), "current_item": current})
+
+    _report()
+
     sem = asyncio.Semaphore(settings.INGEST_CONCURRENCY)
 
     async def _process_one(video_url: str) -> dict:
         async with sem:
             audio_path, doc_id, title, video_path = await prepare_audio(video_url, use_ocr)
+
+            def _chunk(idx: int, total_chunks: int, extra: dict) -> None:
+                fractions[video_url] = idx / max(1, total_chunks)
+                _report(title)
+
             item = await transcribe_and_ingest(
                 audio_path=audio_path,
                 doc_id=doc_id,
@@ -83,7 +110,12 @@ async def process_youtube(
                 keep_audio=keep_audio,
                 source_url=video_url,
                 video_path=video_path if use_ocr else None,
+                backend=backend,
+                asr_label=asr_label,
+                progress_cb=_chunk,
             )
+            fractions[video_url] = 1.0
+            _report(title)
             item["video_id"] = item.pop("doc_id")
             return item
 
@@ -103,47 +135,61 @@ async def process_youtube(
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
 
 
-async def process_uploaded_files(
-    files: List[UploadFile],
+async def process_saved_uploads(
+    saved: list[tuple[str, str]],
     export_txt: bool,
     export_json: bool = False,
     keep_audio: bool = False,
     use_ocr: bool = False,
+    progress_cb: Callable[[dict], None] | None = None,
+    backend: HttpASRBackend | None = None,
+    asr_label: str | None = None,
 ) -> dict:
-    """Save uploaded files, extract audio, transcribe and ingest each one."""
-    work_dir = tempfile.mkdtemp()
+    """Transcribe+ingest already-saved upload files. `saved` = [(path, original_filename)]."""
     items, errors = [], []
+    total = len(saved)
+    fractions = {p: 0.0 for p, _ in saved}
 
+    def _report(current: str | None = None) -> None:
+        if progress_cb:
+            overall = 100.0 * sum(fractions.values()) / max(1, total)
+            done = sum(1 for f in fractions.values() if f >= 1.0)
+            progress_cb({"total_items": total, "done_items": done,
+                         "progress": round(overall, 1), "current_item": current})
+
+    _report()
+    work_dir = tempfile.mkdtemp()
     try:
-        for upload_file in files:
-            raw_path = Path(work_dir) / upload_file.filename
+        for path, filename in saved:
             try:
-                raw_path.write_bytes(await upload_file.read())
-                local_result = await asyncio.to_thread(extract_audio_from_video, str(raw_path), work_dir)
+                local_result = await asyncio.to_thread(extract_audio_from_video, path, work_dir)
+
+                def _chunk(idx: int, total_chunks: int, extra: dict, _p: str = path) -> None:
+                    fractions[_p] = idx / max(1, total_chunks)
+                    _report(filename)
+
                 item = await transcribe_and_ingest(
-                    audio_path=local_result.audio_path,
-                    doc_id=local_result.file_id,
-                    title=local_result.title,
-                    export_txt=export_txt,
-                    export_json=export_json,
-                    keep_audio=keep_audio,
-                    source_url=None,
-                    source_file_name=upload_file.filename,
-                    video_path=str(raw_path) if use_ocr else None,
+                    audio_path=local_result.audio_path, doc_id=local_result.file_id,
+                    title=local_result.title, export_txt=export_txt, export_json=export_json,
+                    keep_audio=keep_audio, source_url=None, source_file_name=filename,
+                    video_path=path if use_ocr else None,
+                    backend=backend, asr_label=asr_label,
+                    progress_cb=_chunk,
                 )
                 item["file_id"] = item.pop("doc_id")
                 items.append(item)
-                
+            except Exception as e:
+                logger.error("Failed to process file %s: %s", filename, e, exc_info=True)
+                errors.append({"filename": filename, "error": str(e)})
+            finally:
+                fractions[path] = 1.0
+                _report(filename)
                 try:
-                    raw_path.unlink(missing_ok=True)
+                    Path(path).unlink(missing_ok=True)
                 except OSError:
                     pass
-            except Exception as e:
-                logger.error("Failed to process file %s: %s", upload_file.filename, e, exc_info=True)
-                errors.append({"filename": upload_file.filename, "error": str(e)})
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
-
     return {"ingested_count": len(items), "error_count": len(errors), "items": items, "errors": errors}
 
 
@@ -158,6 +204,9 @@ async def transcribe_and_ingest(
     keep_audio: bool = False,
     parent_batch_run_id: str | None = None,
     video_path: str | None = None,
+    backend: HttpASRBackend | None = None,
+    asr_label: str | None = None,
+    progress_cb: Callable[[int, int, dict], None] | None = None,
 ) -> dict:
     """Transcribe audio, ingest into vector store, optionally persist artifacts.
 
@@ -193,7 +242,7 @@ async def transcribe_and_ingest(
     with video_run(
         title=title,
         source_file_name=source_file_name,
-        asr_name=settings.ASR_NAME,
+        asr_name=asr_label or settings.ASR_NAME,
         audio_size_mb=audio_size_mb,
         chunk_minutes=chunk_minutes,
         extra_params=extra_params,
@@ -221,6 +270,8 @@ async def transcribe_and_ingest(
                         run.log_metric("chunk_chars", extra["chunk_chars"], step=idx)
                     if "chunk_chars_per_sec" in extra:
                         run.log_metric("chunk_chars_per_sec", extra["chunk_chars_per_sec"], step=idx)
+                if progress_cb:
+                    progress_cb(idx, total, extra)
 
             run.log_progress(0.0, step=0)
             if chunk_minutes > 0:
@@ -228,14 +279,17 @@ async def transcribe_and_ingest(
                     audio_path,
                     chunk_minutes=chunk_minutes,
                     progress_cb=_on_chunk,
+                    backend=backend,
                 )
             else:
-                transcript = await transcribe(audio_path)
+                transcript = await transcribe(audio_path, backend=backend)
                 run.log_progress(100.0, step=1)
+                if progress_cb:
+                    progress_cb(1, 1, {})
             text = transcript["text"]
             segments = transcript.get("segments", [])
             
-            if video_path and Path(video_path).exists():
+            if video_path and extract_text_from_video and Path(video_path).exists():
                 logger.info("Extracting OCR from video: %s", video_path)
                 ocr_segments = await asyncio.to_thread(extract_text_from_video, video_path, 15)
                 
@@ -321,7 +375,7 @@ async def transcribe_and_ingest(
                 "title": title,
                 "source_url": source_url,
                 "source_file_name": source_file_name,
-                "asr_name": settings.ASR_NAME,
+                "asr_name": asr_label or settings.ASR_NAME,
                 "language": transcript.get("language"),
                 "text": text,
                 "segments": segments,

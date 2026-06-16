@@ -1,0 +1,50 @@
+<!-- Animated starfield canvas (drifting stars + shooting stars, behind all UI) -->
+<app-starfield />
+
+<!-- Fixed topographic contour motif (behind all content).
+     Wrapper (.bg-contour) carries the parallax translate;
+     inner SVG (.bg-contour-svg) carries the spin animation
+     so the two individual transform props never conflict. -->
+<div class="bg-contour" aria-hidden="true">
+  <svg class="bg-contour-svg" viewBox="0 0 400 400" fill="none">
+    <g stroke="#e3b341" stroke-width="0.6" opacity="0.5">
+      <circle cx="210" cy="190" r="30"/>
+      <circle cx="206" cy="186" r="58"/>
+      <circle cx="200" cy="184" r="86"/>
+      <circle cx="196" cy="180" r="116"/>
+      <circle cx="190" cy="178" r="148"/>
+      <circle cx="186" cy="176" r="182"/>
+    </g>
+    <g stroke="#6fc6cf" stroke-width="0.5" opacity="0.3">
+      <circle cx="210" cy="190" r="44"/>
+      <circle cx="203" cy="185" r="72"/>
+      <circle cx="197" cy="182" r="101"/>
+      <circle cx="192" cy="179" r="132"/>
+    </g>
+    <circle cx="210" cy="190" r="3" fill="#e3b341" stroke="none"/>
+  </svg>
+</div>
+
+@if (auth.isAuthenticated()) {
+  <header class="topbar reveal">
+    <a routerLink="/" class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e3b341" stroke-width="1.5">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 12 15.5 8.5 13.5 14 8.5 15.5 10.5 10z" fill="#6fc6cf" stroke="none"/>
+          <circle cx="12" cy="12" r="1.4" fill="#e3b341" stroke="none"/>
+        </svg>
+      </span>
+      <span class="brand-name">Астролябия</span>
+    </a>
+    <span class="spacer"></span>
+    <a routerLink="/atlas" class="nav-link">Карта тем</a>
+    <a routerLink="/ingest" class="nav-link">Добавить</a>
+    @if (auth.isAdmin()) {
+      <a routerLink="/admin" class="nav-link">Доступы</a>
+    }
+    <span class="who">{{ auth.user()?.username }}</span>
+    <button class="logout-btn" (click)="logout()">Выйти</button>
+  </header>
+}
+<router-outlet />

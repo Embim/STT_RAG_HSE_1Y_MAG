@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     DEFAULT_SIMILARITY_THRESHOLD: float = 0.0
     HYBRID_SEARCH_ALPHA: float = 0.7
 
+    # ── Embedding-space map (3D "облако тем") ───────────────────────────
+    # Сколько чанков максимум тянуть в визуализацию (с векторами). UMAP/KMeans
+    # по нескольким тысячам точек считаются за секунды; кап защищает от OOM на
+    # огромных корпусах.
+    EMBEDDING_MAP_MAX_POINTS: int = 5000
+    # Редьюсер размерности: "auto" (umap если установлен, иначе pca), "umap", "pca".
+    # UMAP лучше разделяет кластеры; PCA — лёгкий fallback без доп. зависимостей.
+    EMBEDDING_MAP_REDUCER: str = "auto"
+
     HUGGINGFACE_CACHE: str = ""
 
     LLM_MODEL: str
@@ -63,13 +72,28 @@ class Settings(BaseSettings):
     # Evaluation
     # ASR — single OpenAI-compatible HTTP endpoint. Swap models by pointing
     # WHISPER_URL at a different container and updating ASR_NAME / ASR_MODEL_ID.
-    ASR_NAME: str = "faster_whisper_large_v3_turbo"
-    ASR_MODEL_ID: str = "whisper-1"
+    # Дефолты совпадают с реестром system/asr_models.py (модель whisper), чтобы
+    # fallback-путь без авто-свапа (и Airflow DAG) репортил ту же модель, что и
+    # API-путь, и не было расхождения меток в MLflow.
+    ASR_NAME: str = "whisper_large_v3_turbo"
+    ASR_MODEL_ID: str = "deepdml/faster-whisper-large-v3-turbo-ct2"
     ASR_LANGUAGE: str = "ru"
     # `transcription` (default) — стандартный /v1/audio/transcriptions путь.
     # `chat` — /v1/chat/completions с audio как data URI base64. Использовать
     # для Qwen3-ASR (у которого transcription endpoint в vLLM 0.20.2 сломан).
     ASR_ENDPOINT: str = "transcription"
+    # Per-request выбор ASR-модели с авто-свапом docker-контейнеров под одну
+    # GPU (см. system/asr_manager.py). По умолчанию ВЫКЛ: на dev-машине без
+    # docker/GPU выбор модели просто строит backend под выбранный model_id и
+    # шлёт на уже поднятый `asr`. На бою (GPU-box) включить =true в .env, тогда
+    # API сам гасит/поднимает нужный контейнер. Требует смонтированного
+    # docker.sock в api-контейнере (см. docker-compose.yml).
+    ASR_AUTOSWAP_ENABLED: bool = False
+    # Какая модель обслуживается, когда авто-свап ВЫКЛЮЧЕН (одна модель за
+    # алиасом `asr`). Пусто → реестровый дефолт (whisper). На бою выставь под
+    # реально поднятый профиль (напр. `qwen3`, если поднят asr-qwen3) — тогда
+    # фронт предложит к выбору именно её. Игнорируется при включённом свапе.
+    ASR_ACTIVE_MODEL: str = ""
     ASR_BENCHMARK: str = "mozilla-foundation/common_voice_17_0"
     ASR_BENCHMARK_LANG: str = "ru"
     ASR_BENCHMARK_SPLIT: str = "test"
@@ -125,6 +149,15 @@ class Settings(BaseSettings):
     JUDGE_MAX_OUTPUT_TOKENS: int = 24000
     JUDGE_MAX_INPUT_CHARS: int = 4000
     JUDGE_PROMPT_DIR: str = "prompts/judge"
+
+    # ── Auth (Phase 2) ──────────────────────────────────────────────
+    JWT_SECRET: str = "dev-insecure-change-me-in-dotenv!"   # 34B dev default; MUST override in .env for prod
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 720                # 12h
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = ""                      # set in .env -> admin auto-created on startup
+    AUTH_DATABASE_URL: str = ""                   # set (e.g. postgresql+psycopg2://...) → Postgres; empty → sqlite at AUTH_DB_PATH
+    AUTH_DB_PATH: str = ""                        # empty -> <repo>/auth/users.db
 
     class Config:
         env_file = ENV_PATH

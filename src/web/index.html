@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DS Navigator — Audio2RAG</title>
+<meta name="description" content="Навигатор знаний по DS-домену: доказательные ответы с маршрутизацией к первоисточнику и таймкодам." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --ink:        #0c0d11;
+    --ink-2:      #111319;
+    --surface:    #15171f;
+    --surface-2:  #1b1e28;
+    --line:       rgba(233,228,216,.10);
+    --line-2:     rgba(233,228,216,.18);
+    --bone:       #ece6d8;
+    --bone-dim:   #b7b0a1;
+    --muted:      #807a6d;
+    --amber:      #e3b341;   /* waypoint / signal */
+    --amber-soft: rgba(227,179,65,.14);
+    --teal:       #6fc6cf;   /* links / coordinates */
+    --teal-soft:  rgba(111,198,207,.12);
+    --danger:     #e0795f;
+    --radius:     14px;
+    --maxw:       980px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth}
+
+  body{
+    background:var(--ink);
+    color:var(--bone);
+    font-family:"Hanken Grotesk", system-ui, sans-serif;
+    font-size:16px;
+    line-height:1.6;
+    min-height:100vh;
+    position:relative;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ── Atmosphere ───────────────────────────────────────────── */
+  .bg{position:fixed; inset:0; z-index:-3; pointer-events:none}
+  .bg-glow{
+    position:fixed; inset:0; z-index:-3; pointer-events:none;
+    background:
+      radial-gradient(60% 50% at 78% 8%, rgba(227,179,65,.10), transparent 60%),
+      radial-gradient(55% 55% at 8% 92%, rgba(111,198,207,.09), transparent 60%),
+      linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
+  }
+  .bg-contour{
+    position:fixed; z-index:-2; pointer-events:none;
+    top:-22vh; right:-18vw; width:75vw; height:75vw; max-width:1100px; max-height:1100px;
+    opacity:.5;
+    -webkit-mask-image:radial-gradient(circle at center, #000 35%, transparent 72%);
+            mask-image:radial-gradient(circle at center, #000 35%, transparent 72%);
+  }
+  .bg-grain{
+    position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.045;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+  header.top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:26px 0 0; gap:18px; flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:center; gap:14px}
+  .mark{
+    width:42px; height:42px; flex:none; border:1px solid var(--line-2);
+    border-radius:11px; display:grid; place-items:center;
+    background:linear-gradient(160deg, var(--surface-2), var(--ink-2));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .mark svg{width:24px; height:24px}
+  .brand-txt h1{
+    font-family:"Fraunces", serif; font-weight:900; font-size:21px;
+    letter-spacing:-.01em; margin:0; line-height:1;
+  }
+  .brand-txt .sub{font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-top:5px}
+
+  .status{
+    font-family:"IBM Plex Mono", monospace; font-size:11.5px; letter-spacing:.08em;
+    color:var(--bone-dim); display:flex; align-items:center; gap:9px;
+    border:1px solid var(--line); border-radius:999px; padding:7px 14px;
+    background:rgba(255,255,255,.012);
+  }
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 0 rgba(227,179,65,.5)}
+  .dot.live{background:var(--amber); animation:pulse 2.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(227,179,65,.45)}70%{box-shadow:0 0 0 7px rgba(227,179,65,0)}100%{box-shadow:0 0 0 0 rgba(227,179,65,0)}}
+
+  /* ── Hero ─────────────────────────────────────────────────── */
+  .hero{padding:64px 0 30px; max-width:760px}
+  .hero .eyebrow{
+    font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--amber); margin:0 0 18px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .hero .eyebrow::before{content:""; width:34px; height:1px; background:var(--amber); opacity:.6}
+  .hero h2{
+    font-family:"Fraunces", serif; font-weight:400; font-size:clamp(34px, 5.4vw, 56px);
+    line-height:1.04; letter-spacing:-.02em; margin:0; color:var(--bone);
+  }
+  .hero h2 em{font-style:italic; color:var(--amber)}
+  .hero p.lede{
+    color:var(--bone-dim); font-size:17px; max-width:560px; margin:22px 0 0;
+  }
+
+  /* staggered reveal */
+  .reveal{opacity:0; transform:translateY(14px); animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1; transform:none}}
+
+  /* ── Search ───────────────────────────────────────────────── */
+  .search-card{
+    margin-top:34px; background:linear-gradient(180deg, var(--surface), var(--ink-2));
+    border:1px solid var(--line-2); border-radius:var(--radius);
+    padding:8px 8px 8px 8px; box-shadow:0 24px 60px -32px rgba(0,0,0,.8);
+    position:relative;
+  }
+  .search-row{display:flex; align-items:center; gap:10px}
+  .search-ic{padding-left:14px; color:var(--muted); display:grid; place-items:center}
+  .search-card input.q{
+    flex:1; background:transparent; border:0; outline:0; color:var(--bone);
+    font-family:"Hanken Grotesk", sans-serif; font-size:17px; padding:18px 4px;
+  }
+  .search-card input.q::placeholder{color:var(--muted)}
+  .go{
+    flex:none; border:0; cursor:pointer; font-family:"Hanken Grotesk", sans-serif;
+    font-weight:600; font-size:15px; color:var(--ink);
+    background:var(--amber); border-radius:10px; padding:13px 22px;
+    display:flex; align-items:center; gap:9px; transition:transform .15s, filter .15s;
+  }
+  .go:hover{filter:brightness(1.06); transform:translateY(-1px)}
+  .go:active{transform:translateY(0)}
+  .go:disabled{opacity:.5; cursor:not-allowed; transform:none; filter:none}
+
+  /* advanced controls */
+  .controls{
+    display:flex; align-items:center; gap:22px 28px; flex-wrap:wrap;
+    margin-top:18px; padding:2px 4px;
+    font-family:"IBM Plex Mono", monospace; font-size:12.5px; color:var(--bone-dim);
+  }
+  .ctl{display:flex; align-items:center; gap:10px}
+  .ctl label{color:var(--muted); letter-spacing:.04em}
+  .ctl input[type=range]{accent-color:var(--amber); width:108px; cursor:pointer}
+  .ctl .val{color:var(--amber); min-width:30px; text-align:right}
+  .ctl select{
+    background:var(--surface-2); color:var(--bone); border:1px solid var(--line-2);
+    border-radius:8px; padding:7px 10px; font-family:inherit; font-size:12.5px; max-width:240px; cursor:pointer;
+  }
+  .switch{display:inline-flex; align-items:center; gap:9px; cursor:pointer; user-select:none}
+  .switch input{display:none}
+  .track{width:34px; height:19px; border-radius:999px; background:var(--surface-2); border:1px solid var(--line-2); position:relative; transition:background .2s}
+  .track::after{content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--muted); transition:.2s}
+  .switch input:checked + .track{background:var(--amber-soft); border-color:var(--amber)}
+  .switch input:checked + .track::after{background:var(--amber); transform:translateX(15px)}
+
+  /* ── Results ──────────────────────────────────────────────── */
+  #results{margin:40px 0 80px; min-height:40px}
+
+  .rewrite{
+    font-family:"IBM Plex Mono", monospace; font-size:12.5px; color:var(--bone-dim);
+    border-left:2px solid var(--teal); padding:8px 0 8px 14px; margin:0 0 26px;
+    background:linear-gradient(90deg, var(--teal-soft), transparent);
+  }
+  .rewrite b{color:var(--teal); font-weight:500}
+
+  .answer{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:30px 32px; position:relative; overflow:hidden;
+  }
+  .answer::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:linear-gradient(180deg, var(--amber), transparent)}
+  .answer .tag{
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--amber); margin:0 0 14px;
+  }
+  .answer .body{font-size:16.5px; color:var(--bone)}
+  .answer .body :first-child{margin-top:0}
+  .answer .body :last-child{margin-bottom:0}
+  .answer .body p{margin:0 0 14px}
+  .answer .body h1,.answer .body h2,.answer .body h3{font-family:"Fraunces",serif; font-weight:600; line-height:1.2; margin:22px 0 10px}
+  .answer .body code{font-family:"IBM Plex Mono",monospace; font-size:.9em; background:var(--surface-2); padding:2px 6px; border-radius:5px}
+  .answer .body pre{background:var(--ink); border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow:auto}
+  .answer .body pre code{background:none; padding:0}
+  .answer .body a{color:var(--teal)}
+  .answer .body ul,.answer .body ol{padding-left:22px; margin:0 0 14px}
+  .answer .body li{margin:4px 0}
+  .answer .body blockquote{border-left:2px solid var(--line-2); margin:0 0 14px; padding-left:16px; color:var(--bone-dim)}
+
+  .sources-h{
+    display:flex; align-items:baseline; gap:14px; margin:42px 0 18px;
+    font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .sources-h::after{content:""; flex:1; height:1px; background:var(--line)}
+  .sources-h .n{color:var(--amber)}
+
+  .src{
+    display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:start;
+    padding:20px 22px; border:1px solid var(--line); border-radius:var(--radius);
+    background:var(--surface); margin-bottom:14px;
+    transition:border-color .2s, transform .2s, background .2s;
+  }
+  .src:hover{border-color:var(--line-2); transform:translateX(3px); background:var(--surface-2)}
+  .src .idx{
+    font-family:"IBM Plex Mono", monospace; font-size:13px; color:var(--amber);
+    border:1px solid var(--amber); border-radius:8px; width:34px; height:34px;
+    display:grid; place-items:center; background:var(--amber-soft);
+  }
+  .src .meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px}
+  .src .title{font-weight:600; color:var(--bone); font-size:15.5px}
+  .chip{
+    font-family:"IBM Plex Mono", monospace; font-size:11.5px; letter-spacing:.05em;
+    border:1px solid var(--line-2); border-radius:999px; padding:3px 10px; color:var(--bone-dim);
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .chip.tc{color:var(--teal); border-color:rgba(111,198,207,.35); background:var(--teal-soft)}
+  .src .snip{color:var(--bone-dim); font-size:14.5px; line-height:1.62; max-height:4.9em; overflow:hidden; position:relative; transition:max-height .3s}
+  .src .snip.open{max-height:1400px}
+  .src .snip-fade{display:block; margin-top:6px}
+  .src .more{
+    background:none; border:0; color:var(--teal); cursor:pointer; font-family:"IBM Plex Mono",monospace;
+    font-size:11.5px; letter-spacing:.05em; padding:6px 0 0; text-transform:uppercase;
+  }
+  .src .goto{
+    color:var(--amber); text-decoration:none; font-family:"IBM Plex Mono", monospace;
+    font-size:12px; display:inline-flex; align-items:center; gap:7px; margin-top:10px;
+    border-bottom:1px solid transparent; padding-bottom:1px; transition:border-color .2s;
+  }
+  .src .goto:hover{border-color:var(--amber)}
+
+  /* loading / states */
+  .scan{display:flex; align-items:center; gap:16px; color:var(--bone-dim); font-family:"IBM Plex Mono",monospace; font-size:13px; padding:8px 2px}
+  .radar{width:22px; height:22px; border-radius:50%; border:2px solid var(--line-2); border-top-color:var(--amber); animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty,.err{
+    border:1px dashed var(--line-2); border-radius:var(--radius); padding:26px 28px;
+    color:var(--bone-dim); font-size:15px; background:rgba(255,255,255,.012);
+  }
+  .err{border-color:rgba(224,121,95,.4); color:var(--danger)}
+  .err b{color:var(--danger)}
+
+  footer{padding:30px 0 50px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap}
+  footer .mono{font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.08em}
+  footer a{color:var(--bone-dim); text-decoration:none}
+  footer a:hover{color:var(--amber)}
+
+  /* ── Gate overlay ─────────────────────────────────────────── */
+  .gate{
+    position:fixed; inset:0; z-index:40; display:none; place-items:center;
+    background:rgba(8,9,12,.86); backdrop-filter:blur(8px); padding:24px;
+  }
+  .gate.show{display:grid}
+  .gate-card{
+    width:min(420px, 100%); background:linear-gradient(180deg,var(--surface),var(--ink-2));
+    border:1px solid var(--line-2); border-radius:18px; padding:34px 32px;
+    box-shadow:0 40px 90px -40px #000; text-align:center;
+  }
+  .gate-card .mark{margin:0 auto 18px}
+  .gate-card h3{font-family:"Fraunces",serif; font-weight:600; font-size:23px; margin:0 0 6px}
+  .gate-card p{color:var(--bone-dim); font-size:14px; margin:0 0 22px}
+  .gate-card input{
+    width:100%; background:var(--ink); border:1px solid var(--line-2); border-radius:10px;
+    padding:14px 16px; color:var(--bone); font-family:"IBM Plex Mono",monospace; font-size:15px;
+    text-align:center; letter-spacing:.1em; outline:0; margin-bottom:14px;
+  }
+  .gate-card input:focus{border-color:var(--amber)}
+  .gate-card button{
+    width:100%; border:0; cursor:pointer; background:var(--amber); color:var(--ink);
+    font-family:"Hanken Grotesk",sans-serif; font-weight:600; font-size:15px;
+    padding:14px; border-radius:10px; transition:filter .15s;
+  }
+  .gate-card button:hover{filter:brightness(1.06)}
+  .gate-card .gerr{color:var(--danger); font-size:13px; min-height:18px; margin-top:12px; font-family:"IBM Plex Mono",monospace}
+
+  @media (max-width:600px){
+    .hero{padding-top:46px}
+    .answer{padding:24px 20px}
+    .src{padding:16px 16px}
+    .controls{gap:16px 20px}
+  }
+</style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <!-- topographic contour motif -->
+  <svg class="bg-contour" viewBox="0 0 400 400" fill="none" aria-hidden="true">
+    <g stroke="#e3b341" stroke-width="0.6" opacity="0.5">
+      <circle cx="210" cy="190" r="30"/>
+      <circle cx="206" cy="186" r="58"/>
+      <circle cx="200" cy="184" r="86"/>
+      <circle cx="196" cy="180" r="116"/>
+      <circle cx="190" cy="178" r="148"/>
+      <circle cx="186" cy="176" r="182"/>
+    </g>
+    <g stroke="#6fc6cf" stroke-width="0.5" opacity="0.3">
+      <circle cx="210" cy="190" r="44"/>
+      <circle cx="203" cy="185" r="72"/>
+      <circle cx="197" cy="182" r="101"/>
+      <circle cx="192" cy="179" r="132"/>
+    </g>
+    <circle cx="210" cy="190" r="3" fill="#e3b341" stroke="none"/>
+  </svg>
+  <div class="bg-grain"></div>
+
+  <!-- ── Gate ── -->
+  <div class="gate" id="gate">
+    <div class="gate-card">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e3b341" stroke-width="1.6"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4z"/><path d="m9 12 2 2 4-4" stroke="#6fc6cf"/></svg>
+      </div>
+      <h3>Доступ к демо</h3>
+      <p>Введите ключ доступа, чтобы открыть навигатор знаний.</p>
+      <input id="gateKey" type="password" placeholder="access key" autocomplete="off" />
+      <button id="gateBtn">Войти</button>
+      <div class="gerr" id="gateErr"></div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <header class="top reveal">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#e3b341" stroke-width="1.5">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 12 15.5 8.5 13.5 14 8.5 15.5 10.5 10z" fill="#6fc6cf" stroke="none"/>
+            <circle cx="12" cy="12" r="1.4" fill="#e3b341" stroke="none"/>
+          </svg>
+        </div>
+        <div class="brand-txt">
+          <h1>DS Navigator</h1>
+          <div class="sub">Audio2RAG · knowledge index</div>
+        </div>
+      </div>
+      <div class="status"><span class="dot" id="statusDot"></span><span id="statusTxt">подключение…</span></div>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow reveal" style="animation-delay:.05s">RAG-поиск по лекциям</p>
+      <h2 class="reveal" style="animation-delay:.12s">Спроси базу знаний — <em>получи ответ с маршрутом</em> к первоисточнику.</h2>
+      <p class="lede reveal" style="animation-delay:.2s">
+        Семантический поиск по транскрибированным DS-лекциям. Каждый ответ опирается на
+        найденные фрагменты — с таймкодами и кликабельными ссылками на момент в записи.
+      </p>
+
+      <div class="search-card reveal" style="animation-delay:.28s">
+        <div class="search-row">
+          <span class="search-ic" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </span>
+          <input class="q" id="q" type="text" placeholder="Например: что такое механизм внимания в трансформерах?" autocomplete="off" />
+          <button class="go" id="go">
+            <span>Найти</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="controls reveal" style="animation-delay:.34s">
+        <div class="ctl">
+          <label for="topk">источников</label>
+          <input type="range" id="topk" min="1" max="10" value="5" />
+          <span class="val" id="topkVal">5</span>
+        </div>
+        <div class="ctl">
+          <label for="thr">порог</label>
+          <input type="range" id="thr" min="0" max="1" step="0.05" value="0.5" />
+          <span class="val" id="thrVal">0.50</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="rewrite" checked />
+          <span class="track"></span>
+          <span>переформулировать запрос</span>
+        </label>
+        <div class="ctl">
+          <label for="src">область</label>
+          <select id="src"><option value="">все материалы</option></select>
+        </div>
+      </div>
+    </section>
+
+    <section id="results" aria-live="polite"></section>
+
+    <footer>
+      <span>DS Navigator — навигатор знаний по DS-домену.</span>
+      <span class="mono"><a href="/docs" target="_blank">API /docs</a> · FRIDA + Weaviate + OpenRouter</span>
+    </footer>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const LS_KEY = "ds_navigator_token";
+
+  // ── access token (from ?key=… or localStorage) ──────────────
+  const url = new URL(location.href);
+  const keyFromUrl = url.searchParams.get("key");
+  if (keyFromUrl) {
+    localStorage.setItem(LS_KEY, keyFromUrl);
+    url.searchParams.delete("key");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
+  let token = localStorage.getItem(LS_KEY) || "";
+
+  const authHeaders = () => token ? { "X-Demo-Token": token } : {};
+
+  // ── helpers ──────────────────────────────────────────────────
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  function fmtTs(sec){
+    if (sec === null || sec === undefined || sec === "") return null;
+    const t = Math.max(0, Math.floor(Number(sec)));
+    if (!Number.isFinite(t)) return null;
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+    const pad = (n) => String(n).padStart(2,"0");
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+
+  function linkWithTs(rawUrl, sec){
+    if (!rawUrl) return null;
+    const t = (sec === null || sec === undefined || sec === "") ? null : Math.max(0, Math.floor(Number(sec)));
+    try {
+      const u = new URL(rawUrl);
+      const isYt = /youtube\.com|youtu\.be/.test(u.hostname);
+      if (t && isYt) { u.searchParams.set("t", `${t}s`); }
+      else if (t) { u.searchParams.set("t", String(t)); }
+      return u.toString();
+    } catch { return rawUrl; }
+  }
+
+  function renderMarkdown(md){
+    try {
+      if (window.marked && window.DOMPurify) {
+        marked.setOptions({ breaks:true, gfm:true });
+        return DOMPurify.sanitize(marked.parse(md || ""));
+      }
+    } catch {}
+    return "<p>" + esc(md).replace(/\n{2,}/g,"</p><p>").replace(/\n/g,"<br>") + "</p>";
+  }
+
+  // ── status ───────────────────────────────────────────────────
+  async function probe(){
+    try {
+      const r = await fetch("/auth-check", { headers: authHeaders() });
+      if (r.status === 401) return { ok:false, gate:true };
+      const d = await r.json();
+      return { ok:true, gate:!!d.gate };
+    } catch { return { ok:false, gate:false, offline:true }; }
+  }
+  function setStatus(ok, txt){
+    $("statusDot").className = "dot" + (ok ? " live" : "");
+    $("statusTxt").textContent = txt;
+  }
+
+  // ── gate ─────────────────────────────────────────────────────
+  function openGate(msg){
+    $("gate").classList.add("show");
+    $("gateErr").textContent = msg || "";
+    setTimeout(() => $("gateKey").focus(), 50);
+  }
+  function closeGate(){ $("gate").classList.remove("show"); }
+
+  $("gateBtn").addEventListener("click", submitGate);
+  $("gateKey").addEventListener("keydown", (e) => { if (e.key === "Enter") submitGate(); });
+  async function submitGate(){
+    const val = $("gateKey").value.trim();
+    if (!val){ $("gateErr").textContent = "Введите ключ."; return; }
+    token = val;
+    const res = await probe();
+    if (res.ok){
+      localStorage.setItem(LS_KEY, token);
+      closeGate();
+      boot(true);
+    } else {
+      token = "";
+      $("gateErr").textContent = "Неверный ключ доступа.";
+    }
+  }
+
+  // ── source filter ────────────────────────────────────────────
+  async function loadSources(){
+    try {
+      const r = await fetch("/source-files", { headers: authHeaders() });
+      if (!r.ok) return;
+      const d = await r.json();
+      const sel = $("src");
+      (d.files || []).forEach(f => {
+        const o = document.createElement("option");
+        o.value = f; o.textContent = f.length > 48 ? f.slice(0,46)+"…" : f;
+        sel.appendChild(o);
+      });
+    } catch {}
+  }
+
+  // ── controls wiring ──────────────────────────────────────────
+  $("topk").addEventListener("input", e => $("topkVal").textContent = e.target.value);
+  $("thr").addEventListener("input", e => $("thrVal").textContent = Number(e.target.value).toFixed(2));
+
+  // ── search ───────────────────────────────────────────────────
+  let busy = false;
+  async function search(){
+    const question = $("q").value.trim();
+    if (!question || busy) return;
+    busy = true; $("go").disabled = true;
+    const R = $("results");
+    R.innerHTML = `<div class="scan"><span class="radar"></span><span>триангуляция источников · поиск по базе…</span></div>`;
+
+    try {
+      const r = await fetch("/forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          question,
+          top_k: Number($("topk").value),
+          similarity_threshold: Number($("thr").value),
+          use_rewrite: $("rewrite").checked,
+          source_title: $("src").value || null,
+        }),
+      });
+
+      if (r.status === 401){ busy=false; $("go").disabled=false; openGate("Сессия истекла — введите ключ заново."); return; }
+      if (!r.ok){
+        let detail = `HTTP ${r.status}`;
+        try { const e = await r.json(); if (e.detail) detail = e.detail; } catch {}
+        throw new Error(detail);
+      }
+      const data = await r.json();
+      if (!data || !data.answer){
+        R.innerHTML = `<div class="empty">Модель не вернула ответ. Возможно, в базе нет релевантных фрагментов — попробуйте переформулировать вопрос или снизить порог схожести.</div>`;
+        return;
+      }
+      renderResult(data);
+    } catch (err) {
+      R.innerHTML = `<div class="err"><b>Ошибка запроса.</b> ${esc(err.message || err)}</div>`;
+    } finally {
+      busy = false; $("go").disabled = false;
+    }
+  }
+
+  function renderResult(data){
+    const R = $("results");
+    let html = "";
+
+    if (data.rewrite_applied && data.retrieval_query){
+      html += `<div class="rewrite reveal">🔁 поисковый запрос переформулирован → <b>${esc(data.retrieval_query)}</b></div>`;
+    }
+
+    html += `<div class="answer reveal" style="animation-delay:.05s">
+      <div class="tag">Ответ навигатора</div>
+      <div class="body">${renderMarkdown(data.answer)}</div>
+    </div>`;
+
+    const docs = data.retrieved_documents || [];
+    if (docs.length){
+      html += `<div class="sources-h">источники <span class="n">[${docs.length}]</span></div>`;
+      docs.forEach((d, i) => {
+        const m = d.metadata || {};
+        const tsStart = fmtTs(m.start_sec), tsEnd = fmtTs(m.end_sec);
+        const tc = tsStart ? (tsEnd ? `${tsStart}–${tsEnd}` : tsStart) : null;
+        const title = m.title || m.source_file_name || `Фрагмент ${i+1}`;
+        const link = linkWithTs(m.source_url, m.start_sec);
+        const text = d.text || "";
+        const long = text.length > 320;
+
+        html += `<div class="src reveal" style="animation-delay:${.08 + i*.04}s">
+          <div class="idx">${String(i+1).padStart(2,"0")}</div>
+          <div>
+            <div class="meta">
+              <span class="title">${esc(title)}</span>
+              ${tc ? `<span class="chip tc">◷ ${esc(tc)}</span>` : ""}
+            </div>
+            <div class="snip${long ? "" : " open"}">${esc(text)}</div>
+            ${long ? `<button class="more" data-more>развернуть фрагмент ↓</button>` : ""}
+            ${link ? `<a class="goto" href="${esc(link)}" target="_blank" rel="noopener">→ перейти к источнику${tc ? " на "+esc(tsStart) : ""}</a>` : ""}
+          </div>
+        </div>`;
+      });
+    }
+
+    R.innerHTML = html;
+    R.querySelectorAll("[data-more]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const snip = btn.previousElementSibling;
+        const open = snip.classList.toggle("open");
+        btn.textContent = open ? "свернуть фрагмент ↑" : "развернуть фрагмент ↓";
+      });
+    });
+    R.scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+
+  $("go").addEventListener("click", search);
+  $("q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+
+  // ── boot ─────────────────────────────────────────────────────
+  async function boot(afterGate){
+    const res = await probe();
+    if (res.offline){ setStatus(false, "сервер недоступен"); return; }
+    if (!res.ok && res.gate){ setStatus(false, "нужен ключ"); if (!afterGate) openGate(); return; }
+    setStatus(true, res.gate ? "доступ открыт" : "готов к поиску");
+    loadSources();
+    $("q").focus();
+  }
+  boot(false);
+})();
+</script>
+</body>
+</html>
