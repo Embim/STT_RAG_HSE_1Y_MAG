@@ -549,7 +549,7 @@ services:
       - langfuse
     environment:
       POSTGRES_USER: langfuse
-      POSTGRES_PASSWORD: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD}
       POSTGRES_DB: langfuse
     volumes:
       - langfuse-postgres-data:/var/lib/postgresql/data
@@ -575,7 +575,7 @@ services:
       - langfuse
     environment:
       CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD}
       CLICKHOUSE_DB: default
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
@@ -594,7 +594,7 @@ services:
       - "9001:9001"
     environment:
       MINIO_ROOT_USER: langfuse
-      MINIO_ROOT_PASSWORD: langfuse_secret
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD}
     command: server /data --console-address ":9001"
     volumes:
       - langfuse-minio-data:/data
@@ -646,14 +646,14 @@ services:
       LANGFUSE_INIT_PROJECT_SECRET_KEY: lf_sk_local_dev_hse_rag_1234567
       LANGFUSE_INIT_USER_NAME: Admin
       LANGFUSE_INIT_USER_EMAIL: admin@hse-rag.local
-      LANGFUSE_INIT_USER_PASSWORD: changeme
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
       ENCRYPTION_KEY: ac5ac17cb554c3a2fcaf2810c78cda5c2350d4faefe0a9bf685e4ed83449499d
       REDIS_HOST: langfuse-redis
       REDIS_PORT: 6379
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000/default
       CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD}
       # S3 Event Upload (mandatory for Langfuse v3)
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-media
       LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
@@ -692,7 +692,7 @@ services:
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@langfuse-clickhouse:9000/default
       CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD}
       ENCRYPTION_KEY: ac5ac17cb554c3a2fcaf2810c78cda5c2350d4faefe0a9bf685e4ed83449499d
       # S3 Event Upload (mandatory for Langfuse v3)
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-media
@@ -728,7 +728,7 @@ services:
       - airflow
     environment:
       POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
       POSTGRES_DB: airflow
     volumes:
       - airflow-postgres-data:/var/lib/postgresql/data
@@ -759,11 +759,11 @@ services:
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD}
     entrypoint: /bin/bash
     command:
       - -c
-      - "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@local || true"
+      - "airflow db migrate && airflow users create --username admin --password ${AIRFLOW_WWW_USER_PASSWORD} --firstname Admin --lastname User --role Admin --email admin@local || true"
     <<: *shared-logs
 
   airflow-webserver:
@@ -863,7 +863,7 @@ services:
       - mlflow
     environment:
       POSTGRES_USER: mlflow
-      POSTGRES_PASSWORD: mlflow
+      POSTGRES_PASSWORD: ${MLFLOW_POSTGRES_PASSWORD}
       POSTGRES_DB: mlflow
     volumes:
       - mlflow-postgres-data:/var/lib/postgresql/data
@@ -887,7 +887,7 @@ services:
       - "9003:9001"
     environment:
       MINIO_ROOT_USER: mlflow
-      MINIO_ROOT_PASSWORD: mlflow_secret
+      MINIO_ROOT_PASSWORD: ${MLFLOW_MINIO_PASSWORD}
     command: server /data --console-address ":9001"
     volumes:
       - mlflow-minio-data:/data
@@ -979,7 +979,7 @@ services:
       - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
